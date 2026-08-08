@@ -698,6 +698,25 @@ function encounterSlotNote(
         ']'
       );
     }
+    // A demotion can move the answer and then vanish from the comparison
+    // below. When the demoted item is itself an exotic, losing its slot also
+    // moves the one exotic seat elsewhere, and the seat filter then removes
+    // the demoted item before the relative comparison ever sees it. Caught
+    // here against the fully unconstrained pick, because an adjustment that
+    // changes the answer without saying so is the folklore this file exists
+    // to avoid.
+    const demotedTop = adjust.note(rawUnconstrained);
+    if (demotedTop && adjust.rankDelta(rawUnconstrained) > 0) {
+      return (
+        rawUnconstrained.name +
+        ' is demoted here: ' +
+        demotedTop.text +
+        (chosen ? ' The slot goes to ' + chosen.name + ' instead.' : '') +
+        ' [rule: ' +
+        demotedTop.ruleId +
+        ']'
+      );
+    }
   }
 
   // Demotions are relative: compare under the same exotic seat decision, so

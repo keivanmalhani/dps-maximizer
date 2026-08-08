@@ -79,3 +79,61 @@ describe('the band that only makes a sword awkward', () => {
     expect(adjust.note(ERGO)!.ruleId).toBe('sword-bonus');
   });
 });
+
+// The invariant this file exists for: an adjustment that changes the answer
+// has to say so on the card. A demoted exotic can lose its slot AND move the
+// one-exotic seat, which used to filter it out of the note comparison before
+// anything got written, so the pick silently changed.
+
+import { ACTIVITIES as ALL } from '../src/data/encounters';
+import { buildDemoProfile } from '../fixtures/demo';
+import { parseProfile } from '../src/ownership';
+import { chooseWeaponSlots } from '../src/recommend';
+import { encounterMode } from '../src/encounter';
+import type { GuardianClass } from '../src/types';
+
+describe('no silent adjustments', () => {
+  const player = parseProfile(buildDemoProfile());
+
+  it('every encounter whose rules move a slot explains it on that slot', () => {
+    let checked = 0;
+    for (const activity of ALL) {
+      for (const encounter of activity.encounters) {
+        if (encounter.type === 'none') continue;
+        const adjust = buildEncounterAdjust(encounter);
+        if (!adjust) continue;
+        const mode = encounterMode(encounter);
+        for (const cls of [0, 1, 2] as GuardianClass[]) {
+          const adjusted = chooseWeaponSlots(mode, player, mode === 'master-champions', adjust);
+          const plain = chooseWeaponSlots(mode, player, mode === 'master-champions');
+          for (let i = 0; i < adjusted.length; i += 1) {
+            const before = plain[i].pick?.id ?? null;
+            const after = adjusted[i].pick?.id ?? null;
+            if (before === after) continue;
+            checked += 1;
+            expect(
+              adjusted[i].encounterNote,
+              `${activity.id}/${encounter.id} ${adjusted[i].slot}: ${before} -> ${after} moved with no note`
+            ).not.toBeNull();
+          }
+          void cls;
+        }
+      }
+    }
+    // The test is only meaningful if it actually saw the situation.
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('names the mid-range rule when a sword loses a slot to the band alone', () => {
+    const daughters = ALL.find((a) => a.id === 'kings-fall')!.encounters.find(
+      (e) => e.id === 'daughters'
+    )!;
+    const adjust = buildEncounterAdjust(daughters)!;
+    const slots = chooseWeaponSlots('boss-burst', player, false, adjust);
+    const energy = slots.find((s) => s.slot === 'energy')!;
+    expect(energy.pick?.id).not.toBe('ergo-sum');
+    expect(energy.encounterNote).toContain('Ergo Sum');
+    expect(energy.encounterNote).toContain('demoted');
+    expect(energy.encounterNote).toContain('[rule: mid-range]');
+  });
+});
