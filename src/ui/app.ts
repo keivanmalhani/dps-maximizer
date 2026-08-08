@@ -272,11 +272,48 @@ export class App {
         this.paintArsenal();
         return;
       }
+      const example = target.getAttribute('data-arsq');
+      if (example !== null) {
+        state.arsenalFilters.query = example;
+        this.paintArsenal();
+        // Put the cursor where the text is, so the example is a starting
+        // point to edit rather than a button that did something opaque.
+        const box = el<HTMLInputElement>('ars-query');
+        box?.focus();
+        box?.setSelectionRange(example.length, example.length);
+        return;
+      }
+      if (target.hasAttribute('data-dimcopy')) {
+        const q = el<HTMLElement>('dim-query')?.textContent ?? '';
+        void navigator.clipboard?.writeText(q).then(
+          () => { target.textContent = 'Copied'; },
+          () => { target.textContent = 'Copy failed, select it by hand'; }
+        );
+        return;
+      }
       if (target.getAttribute('data-arsroll') !== null) {
         state.arsenalFilters.damageRollOnly = !state.arsenalFilters.damageRollOnly;
         this.paintArsenal();
       }
     });
+    // The query box re-runs as you type. Rendering the table replaces the
+    // input, so the caret is restored from the value length after each pass.
+    arsenalHost?.addEventListener('input', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || target.id !== 'ars-query') return;
+      const state = this.state;
+      if (!state) return;
+      const box = target as HTMLInputElement;
+      const caret = box.selectionStart ?? box.value.length;
+      state.arsenalFilters.query = box.value;
+      this.paintArsenal();
+      const next = el<HTMLInputElement>('ars-query');
+      if (next) {
+        next.focus();
+        next.setSelectionRange(caret, caret);
+      }
+    });
+
     arsenalHost?.addEventListener('change', (event) => {
       const target = event.target as HTMLElement;
       const state = this.state;

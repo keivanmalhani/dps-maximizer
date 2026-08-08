@@ -22,6 +22,7 @@ import type {
   RankedArsenal,
   RankedArsenalRow
 } from '../arsenal';
+import { dimSearchFor, QUERY_EXAMPLES, QUERY_KEYS, runQuery } from '../query';
 import type { SignInView } from '../signin';
 import type { RunTarget } from '../url-state';
 import { DEFAULT_TARGET } from '../url-state';
@@ -249,6 +250,32 @@ function emptySlotCard(slot: SlotAnswer): string {
   );
 }
 
+/**
+ * The last mile. This page tells you what to run and then leaves you to go
+ * find four items in a vault of nine hundred. DIM is where everybody already
+ * moves gear, so hand it a search.
+ *
+ * It is a SEARCH, not a loadout link: DIM publishes its search syntax and
+ * does not publish a loadout URL format, so inventing one would ship a broken
+ * button. Quoted terms joined by `or` is documented syntax and it works.
+ */
+function dimHandoff(verdict: Verdict): string {
+  const names = verdict.slots
+    .map((slot) => slot.pick?.name ?? '')
+    .concat(verdict.armor?.name ?? '');
+  const query = dimSearchFor(names);
+  if (query === '') return '';
+  return (
+    `<div class="dim">` +
+    `<div class="dim__label">Find these in DIM</div>` +
+    `<code class="dim__q" id="dim-query">${escapeText(query)}</code>` +
+    `<button class="btn btn--ghost dim__copy" type="button" data-dimcopy="1">Copy search</button>` +
+    `<p class="dim__why">Paste it into Destiny Item Manager's search box and this loadout lights up in your vault. ` +
+    `It is a search rather than a loadout link because DIM documents its search syntax and does not document a loadout URL format.</p>` +
+    `</div>`
+  );
+}
+
 export function answerSection(verdict: Verdict, encounter?: EncounterVerdict): string {
   if (verdict.outOfScope) {
     return (
@@ -379,6 +406,7 @@ export function answerSection(verdict: Verdict, encounter?: EncounterVerdict): s
     // The cards come before the paragraph about the cards. This page exists
     // to answer a question; the caveats read better underneath the answer.
     `<div class="answer__grid">${slotCards}${armor}${superCard}</div>` +
+    dimHandoff(verdict) +
     `<p class="answer__subline">${escapeText(verdict.subline)}</p>` +
     fireteam +
     champions +
@@ -659,12 +687,16 @@ export function arsenalTableHtml(
   iconPrefix: string,
   contextLabel: string
 ): string {
-  const filtered = ranked.rows.filter((row) => {
+  const chipFiltered = ranked.rows.filter((row) => {
     if (filters.slot !== 'all' && row.weapon.slot !== filters.slot) return false;
     if (filters.archetype !== 'all' && row.weapon.archetype !== filters.archetype) return false;
     if (filters.damageRollOnly && !(row.rollPerks && row.rollPerks.length > 0)) return false;
     return true;
   });
+  // The chips and the query compose: the chips are the fast common cases,
+  // the query is everything the chips cannot say.
+  const search = runQuery(chipFiltered, filters.query);
+  const filtered = search.rows;
 
   const slotChips = (['all', 'kinetic', 'energy', 'power'] as const)
     .map(
@@ -733,13 +765,45 @@ export function arsenalTableHtml(
         `<p class="ars__exwhy">${escapeText(ranked.excluded[0].flag.text)}</p></div>`
       : '';
 
+  const help =
+    `<details class="qhelp"><summary>What you can type</summary><dl class="qhelp__list">` +
+    QUERY_KEYS.map(
+      (k) => `<dt>${escapeText(k.key)}</dt><dd>${escapeText(k.help)}</dd>`
+    ).join('') +
+    `<dt>and or not</dt><dd>Words next to each other are AND. Use "or", "not" or a leading dash, and brackets to group.</dd>` +
+    `<dt>"in quotes"</dt><dd>A phrase with spaces, e.g. perk:"bait and switch".</dd>` +
+    `</dl></details>`;
+
+  const examples =
+    `<div class="qex">` +
+    QUERY_EXAMPLES.map(
+      (ex) =>
+        `<button class="qex__btn" type="button" data-arsq="${escapeText(ex.query)}">${escapeText(ex.label)}</button>`
+    ).join('') +
+    `</div>`;
+
+  const count = search.empty
+    ? `${filtered.length} of ${ranked.rows.length} shown`
+    : `${filtered.length} of ${chipFiltered.length} match`;
+  const status = search.error
+    ? `<p class="qbar__error" role="status">${escapeText(search.error.message)} Showing everything until the query reads.</p>`
+    : `<p class="qbar__count" role="status">${escapeText(count)}</p>`;
+
   return (
     `<p class="prose">Owned weapons only, ranked for ${escapeText(contextLabel)}. ${escapeText(ranked.orderNote)}</p>` +
     `<div class="ars__filters" id="arsenal-filters">${slotChips}` +
     `<select id="ars-archetype" class="picker__select" aria-label="Filter by archetype">${archetypeOptions}</select>` +
     rollChip +
     `</div>` +
-    `<div class="ars">${rows || '<p class="prose">Nothing owned matches these filters.</p>'}</div>` +
+    `<div class="qbar">` +
+    `<input id="ars-query" class="qbar__input" type="search" spellcheck="false" autocomplete="off"` +
+    ` placeholder="is:power is:roll -type:sword" aria-label="Search your arsenal"` +
+    ` value="${escapeText(filters.query)}" />` +
+    status +
+    `</div>` +
+    examples +
+    help +
+    `<div class="ars">${rows || '<p class="prose">Nothing owned matches this search.</p>'}</div>` +
     excluded
   );
 }

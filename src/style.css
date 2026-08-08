@@ -1261,3 +1261,177 @@ input:focus-visible {
   color: var(--faint);
   margin-top: 4px;
 }
+
+/* ------------------------------------------------------- the search language
+   DIM taught every Destiny player to type their filters. The box is the
+   primary control here; the chips above it stay because they are faster for
+   the three things people ask for most. */
+
+.qbar {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.qbar__input {
+  flex: 1 1 340px;
+  min-width: 0;
+  appearance: none;
+  font: inherit;
+  font-size: 14.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+  background: linear-gradient(177deg, var(--panel-lift), var(--panel) 58%);
+  border: 1px solid var(--line-hi);
+  border-radius: 4px;
+  padding: 10px 13px;
+}
+
+.qbar__input::placeholder {
+  color: var(--faint);
+}
+
+.qbar__input:focus {
+  border-color: rgba(226, 89, 60, 0.55);
+  outline: none;
+}
+
+.qbar__count {
+  font-size: 12.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A broken query keeps the rows and says why, in the one colour reserved for
+   a real problem. */
+.qbar__error {
+  font-size: 12.5px;
+  color: var(--accent);
+  flex: 1 1 100%;
+}
+
+.qex {
+  margin-top: 10px;
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.qex__btn {
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.016);
+  border: 1px dashed var(--line-hi);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.qex__btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.qhelp {
+  margin-top: 12px;
+  font-size: 12.5px;
+}
+
+.qhelp summary {
+  color: var(--muted);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.qhelp summary:hover {
+  color: var(--text);
+}
+
+.qhelp__list {
+  margin: 10px 0 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.qhelp__list dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.qhelp__list dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------- the DIM handoff */
+
+.dim {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 13px 16px;
+  border: 1px solid var(--line-hi);
+  border-radius: 4px;
+  background: linear-gradient(177deg, var(--panel-lift), var(--panel) 58%);
+}
+
+.dim__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.dim__q {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 7px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.dim__why {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--faint);
+}
+
+@media (max-width: 720px) {
+  .dim {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dim__copy {
+    justify-self: start;
+  }
+
+  .qhelp__list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px 0;
+  }
+
+  .qhelp__list dd {
+    margin-bottom: 8px;
+  }
+}

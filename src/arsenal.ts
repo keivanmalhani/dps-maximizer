@@ -325,12 +325,15 @@ export interface ArsenalFilters {
   slot: 'all' | 'kinetic' | 'energy' | 'power';
   archetype: string; // 'all' or an archetype key
   damageRollOnly: boolean;
+  /** The search-language query. Empty means no query, never "match nothing". */
+  query: string;
 }
 
 export const DEFAULT_ARSENAL_FILTERS: ArsenalFilters = {
   slot: 'all',
   archetype: 'all',
-  damageRollOnly: false
+  damageRollOnly: false,
+  query: ''
 };
 
 export function applyFilters(rows: RankedArsenalRow[], filters: ArsenalFilters): RankedArsenalRow[] {

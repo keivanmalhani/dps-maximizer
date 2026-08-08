@@ -240,7 +240,7 @@ describe('the arsenal table markup', () => {
     const ranked = rankArsenal(rows, 'boss-burst', null);
     const html = arsenalTableHtml(
       ranked,
-      { slot: 'power', archetype: 'all', damageRollOnly: true },
+      { slot: 'power', archetype: 'all', damageRollOnly: true, query: '' },
       '/common/destiny2_content/icons/',
       'Raid boss burst'
     );
