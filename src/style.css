@@ -11,8 +11,13 @@
   --line: #1c2028;
   --line-hi: #2a313d;
   --text: #e9e6df;
-  --muted: #8b909b;
-  --faint: #5a606c;
+  /* Three legible steps, not two legible ones and a decorative one. Measured
+     against the LIGHTEST surface a card can have (--panel-lift): text 13.8:1,
+     muted 7.5:1, faint 4.5:1, all clearing WCAG AA for normal-size text. The
+     old --faint was #5a606c, which measured 2.7:1 there and carried source
+     lines, slot labels and every meta line on the page. */
+  --muted: #a6abb5;
+  --faint: #7d838e;
   --accent: #e2593c;
   --accent-deep: #8a3524;
   --quiet: #1b1f28;
@@ -738,18 +743,22 @@ input:focus-visible {
 
 /* ------------------------------------------------------------------- stats */
 
+/* Six stats over four columns leaves two empty cells, and the shared-hairline
+   trick paints those empties as a solid slab of border colour. Real cards
+   with real gaps: an incomplete row reads as space. */
 .stats {
-  margin-top: 26px;
+  margin-top: 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(236px, 1fr));
+  gap: 11px;
+  align-items: start;
 }
 
 .stat {
-  background: var(--panel);
-  padding: 18px 20px;
+  background: linear-gradient(177deg, var(--panel-lift), var(--panel) 58%);
+  border: 1px solid var(--line-hi);
+  border-radius: 4px;
+  padding: 16px 18px 17px;
 }
 
 .stat__head {
@@ -806,18 +815,20 @@ input:focus-visible {
 
 /* ----------------------------------------------------------------- buckets */
 
+/* Four buckets over three columns: same empty-cell slab as .stats had. */
 .buckets {
-  margin-top: 26px;
+  margin-top: 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(288px, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 
 .bucket {
-  background: var(--panel);
-  padding: 20px 22px;
+  background: linear-gradient(177deg, var(--panel-lift), var(--panel) 58%);
+  border: 1px solid var(--line-hi);
+  border-radius: 4px;
+  padding: 18px 20px 19px;
 }
 
 .bucket__title {
@@ -1168,38 +1179,56 @@ input:focus-visible {
 
 .ars__row {
   display: flex;
-  gap: 12px;
+  gap: 13px;
   align-items: flex-start;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: linear-gradient(177deg, var(--panel-lift), var(--panel) 62%);
+  border: 1px solid var(--line-hi);
+  border-radius: 4px;
+  padding: 11px 14px 12px;
 }
 
 .ars__icon {
-  border-radius: 4px;
+  border-radius: 3px;
+  border: 1px solid var(--line-hi);
+  background: var(--quiet);
   flex-shrink: 0;
 }
 
 .ars__main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Name and badge on one line. A column flex stretches its children across
+   the cross axis, which is what turned the tier chip into a full-width bar. */
+.ars__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
 .ars__name {
-  font-weight: 600;
+  font-weight: 640;
+  font-size: 15px;
+  letter-spacing: -0.008em;
 }
 
 .ars__meta {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+  text-transform: uppercase;
 }
 
 .ars__roll {
   font-size: 13px;
-  color: var(--text);
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .ars__flag {
@@ -1207,9 +1236,19 @@ input:focus-visible {
   color: #d8a03c;
 }
 
+/* "unranked tail" is a caveat about the ordering, not a property of the gun.
+   A pill keeps it from reading as another line of the weapon's description. */
 .ars__unsourced {
-  font-size: 11px;
+  align-self: flex-start;
+  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
   color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 2px 6px 1px;
 }
 
 .ars__excluded {

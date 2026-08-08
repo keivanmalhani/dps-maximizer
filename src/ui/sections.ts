@@ -703,7 +703,11 @@ export function arsenalTableHtml(
       return (
         `<div class="ars__row" data-hash="${row.weapon.hash}">` +
         icon +
-        `<div class="ars__main"><span class="ars__name">${escapeText(row.weapon.name)}</span>${tier}` +
+        // Name and tier share a row. In a column flex the badge was a
+        // block-level child and stretched to the full width of the row,
+        // which turned a tier 1 chip into a solid bar across the card.
+        `<div class="ars__main"><span class="ars__head">` +
+        `<span class="ars__name">${escapeText(row.weapon.name)}</span>${tier}</span>` +
         `<span class="ars__meta">${escapeText(row.weapon.slot)} - ${escapeText(row.weapon.itemTypeDisplayName)}` +
         `${row.weapon.frame ? ' - ' + escapeText(row.weapon.frame) : ''}` +
         `${row.instanceCount > 1 ? ' - x' + row.instanceCount : ''}</span>` +
