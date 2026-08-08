@@ -1,0 +1,26 @@
+{
+  "name": "dps-maximizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The best Destiny 2 damage loadout you can build right now, from your own vault.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "data": "node scripts/build-data.mjs",
+    "ascii": "LC_ALL=C grep -rnI '[^\t -~]' . --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git; test $? -eq 1"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "1.0.3",
+    "@types/node": "^24.13.3",
+    "jsdom": "^28.1.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
+  }
+}
