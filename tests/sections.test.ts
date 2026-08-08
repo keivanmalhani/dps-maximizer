@@ -123,9 +123,28 @@ describe('answerSection', () => {
   });
 
   it('shows a quoted reason with its source on a pick', () => {
+    // Was Gjallarhorn's quote before the one-exotic rule: that loadout
+    // (Ergo Sum + Gjallarhorn) was illegal, and the legal answer keeps Ergo
+    // Sum, so the quote asserted here is Ergo Sum's.
     const html = answerSection(verdict);
-    expect(html).toContain('&quot;Exists to augment Hezen users.&quot;');
+    expect(html).toContain('&quot;Best sword damage when Transcendent&quot;');
     expect(html).toContain('Aegis boss damage sheet, equipment tab, 2026-07');
+  });
+
+  it('renders the one-exotic note in the red honest voice', () => {
+    const html = answerSection(verdict);
+    expect(html).toContain('pick__exclusive');
+    expect(html).toContain('you can only equip one exotic weapon');
+    expect(html).toContain('Gjallarhorn');
+  });
+
+  it('renders the one-exotic note inside an emptied slot card too', () => {
+    // Boss sustained: the exotic seat goes to Thunderlord (power), the
+    // energy slot has no tiered legendary, and the empty card says why.
+    const html = answerSection(recommend(data, 0, 'boss-sustained'));
+    expect(html).toContain('pick--empty');
+    expect(html).toContain('Cloudstrike is the best energy pick you own');
+    expect(html).toContain('this loadout&#39;s exotic is Thunderlord');
   });
 
   it('links every pick to its light.gg page as a real anchor', () => {

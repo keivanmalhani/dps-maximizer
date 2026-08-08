@@ -63,6 +63,12 @@ export interface SlotAnswer {
   emptyReason: string | null;
   /** Set when a better pick exists that the player cannot build yet. */
   idealNote: string | null;
+  /**
+   * Set when the one-exotic rule moved this slot's answer: the slot's best
+   * weapon is an exotic, the loadout's one exotic lives elsewhere, and the
+   * card says so instead of silently showing the runner-up.
+   */
+  exclusivityNote: string | null;
 }
 
 export interface RotationPlan {
@@ -231,28 +237,226 @@ function emptySlotReason(activity: Activity, slot: WeaponSlot): string {
   );
 }
 
-export function pickForSlot(
-  activity: Activity,
+// ------------------------------------------------------- the one-exotic rule
+//
+// Destiny allows at most ONE equipped exotic weapon across the three slots
+// (and at most one exotic armor piece). Rarity is a manifest fact, read from
+// the build-time bake (tierType 6 = exotic), never from anyone's memory.
+// Slots are therefore not picked greedily: every legal way to spend the one
+// exotic weapon slot is enumerated, scored by the functions below, and the
+// best legal combination wins. The scoring is exported and unit-tested so
+// the tie-break is inspectable, not folklore.
+
+export function isExoticWeapon(item: CuratedItem): boolean {
+  return item.kind === 'weapon' && BAKED_ITEMS[item.id]?.tierType === 6;
+}
+
+/**
+ * Slot quality, lower is better. A buildable pick keeps its tier rank
+ * (1..4, untiered 3.5); a pick the player cannot build yet carries the tier
+ * rank plus UNBUILDABLE_PENALTY, so any buildable pick outranks any target
+ * pick; an empty slot is EMPTY_SLOT_QUALITY, worse than the worst real pick.
+ */
+export const UNBUILDABLE_PENALTY = 4;
+export const EMPTY_SLOT_QUALITY = 9;
+
+export function slotQuality(item: CuratedItem | null, buildable: boolean): number {
+  if (item === null) return EMPTY_SLOT_QUALITY;
+  return tierRank(item) + (buildable ? 0 : UNBUILDABLE_PENALTY);
+}
+
+/** One slot of a candidate combination, before it becomes a card. */
+export interface ComboSlot {
+  slot: WeaponSlot;
+  item: CuratedItem | null;
+  buildable: boolean;
+}
+
+export interface LoadoutScore {
+  /** Picks the player can build right now. More is better; compared first. */
+  buildableCount: number;
+  /** Summed slotQuality over the three slots. Lower is better; second. */
+  totalQuality: number;
+  /**
+   * slotQuality of the centerpiece, the rotation's primary damage weapon:
+   * buildRotation dumps the power pick in every plan except the
+   * kinetic-anchored loops, so the centerpiece is the power pick when there
+   * is one, else kinetic, else energy. Lower is better; compared last.
+   */
+  centerpieceQuality: number;
+}
+
+export function scoreLoadout(slots: ComboSlot[]): LoadoutScore {
+  let buildableCount = 0;
+  let totalQuality = 0;
+  for (const entry of slots) {
+    if (entry.item !== null && entry.buildable) buildableCount += 1;
+    totalQuality += slotQuality(entry.item, entry.buildable);
+  }
+  const centerpiece =
+    slots.find((entry) => entry.slot === 'power' && entry.item !== null) ??
+    slots.find((entry) => entry.slot === 'kinetic' && entry.item !== null) ??
+    slots.find((entry) => entry.slot === 'energy' && entry.item !== null) ??
+    null;
+  return {
+    buildableCount,
+    totalQuality,
+    centerpieceQuality: centerpiece
+      ? slotQuality(centerpiece.item, centerpiece.buildable)
+      : EMPTY_SLOT_QUALITY
+  };
+}
+
+/**
+ * Positive when `a` is the better loadout, negative when `b` is, zero on a
+ * dead tie. Maximising summed quality is what keeps the exotic in the slot
+ * whose legendary fallback drops off worst; the centerpiece comparison then
+ * prefers the combination whose primary damage weapon is strongest.
+ */
+export function compareLoadouts(a: LoadoutScore, b: LoadoutScore): number {
+  if (a.buildableCount !== b.buildableCount) return a.buildableCount - b.buildableCount;
+  if (a.totalQuality !== b.totalQuality) return b.totalQuality - a.totalQuality;
+  return b.centerpieceQuality - a.centerpieceQuality;
+}
+
+/** The slot rule the whole site runs on: first buildable, else the target. */
+function poolPick(pool: CuratedItem[], player: PlayerData): CuratedItem | null {
+  return pool.find((item) => buildableNow(item, player)) ?? pool[0] ?? null;
+}
+
+function exclusionLine(
+  displaced: CuratedItem,
+  equipped: CuratedItem,
+  fallback: CuratedItem | null,
   slot: WeaponSlot,
+  player: PlayerData
+): string {
+  const claim = buildableNow(displaced, player)
+    ? displaced.name + ' is the best ' + slot + ' pick you own'
+    : displaced.name + ' is the sheet\'s ' + slot + ' pick';
+  const rule =
+    ', but you can only equip one exotic weapon and this loadout\'s exotic is ' +
+    equipped.name +
+    '; ';
+  if (fallback === null) {
+    return (
+      claim + rule + 'the sheet tiers no legendary for this slot, so run whichever ' + slot + ' weapon you like.'
+    );
+  }
+  const fallbackKind = isExoticWeapon(fallback) ? 'pick' : 'legendary';
+  return claim + rule + 'the best ' + fallbackKind + ' here is ' + fallback.name + ' (' + fallback.tierLabel + ').';
+}
+
+/**
+ * The legal-combination search. For each candidate way to spend the one
+ * exotic weapon slot (each exotic candidate in any slot, plus "no exotic"),
+ * fill every slot with the usual first-buildable-else-target rule over the
+ * candidates that choice allows, score the combination, and keep the best.
+ * Options are tried in sheet order with "no exotic" last, so a dead tie
+ * resolves to the sheet's own ranking.
+ */
+export function chooseWeaponSlots(
+  activity: Activity,
   player: PlayerData,
   withChampion: boolean
-): SlotAnswer {
-  const candidates = weaponCandidates(activity, slot);
-  if (candidates.length === 0) {
-    return { slot, pick: null, emptyReason: emptySlotReason(activity, slot), idealNote: null };
+): SlotAnswer[] {
+  const pools = WEAPON_SLOTS.map((slot) => ({ slot, pool: weaponCandidates(activity, slot) }));
+
+  const exoticOptions: Array<CuratedItem | null> = orderCandidates(
+    pools.flatMap(({ pool }) => pool.filter((item) => isExoticWeapon(item)))
+  );
+  exoticOptions.push(null);
+
+  let best: { exotic: CuratedItem | null; combo: ComboSlot[]; score: LoadoutScore } | null = null;
+  for (const exotic of exoticOptions) {
+    const combo = pools.map(({ slot, pool }) => {
+      const allowed = pool.filter((item) => !isExoticWeapon(item) || item.id === exotic?.id);
+      const item = poolPick(allowed, player);
+      return { slot, item, buildable: item !== null && buildableNow(item, player) };
+    });
+    const score = scoreLoadout(combo);
+    if (best === null || compareLoadouts(score, best.score) > 0) best = { exotic, combo, score };
   }
-  const ideal = candidates[0];
-  const best = candidates.find((item) => buildableNow(item, player)) ?? ideal;
-  const idealNote =
-    best.id === ideal.id
-      ? null
-      : 'The sheet\'s pick for this slot is ' +
-        ideal.name +
-        ' (' +
-        ideal.tierLabel +
-        '), which you cannot build yet. ' +
-        ideal.acquisition;
-  return { slot, pick: toPick(best, player, withChampion), emptyReason: null, idealNote };
+  const winner = best!;
+
+  // The exotic the winning combination actually equips. The allowed exotic
+  // can go unused when a better non-exotic holds its slot, and a note must
+  // never blame an exotic that is not on the loadout.
+  const equipped =
+    winner.combo.map((entry) => entry.item).find((item) => item !== null && isExoticWeapon(item)) ??
+    null;
+
+  return pools.map(({ slot, pool }, index) => {
+    if (pool.length === 0) {
+      return {
+        slot,
+        pick: null,
+        emptyReason: emptySlotReason(activity, slot),
+        idealNote: null,
+        exclusivityNote: null
+      };
+    }
+    const chosen = winner.combo[index].item;
+    // What this slot would say if Destiny allowed a second exotic. When the
+    // rule changed the answer, the item that lost the seat is that exotic,
+    // and the card says so instead of quietly showing the runner-up.
+    const unconstrained = poolPick(pool, player)!;
+    const displaced = chosen?.id !== unconstrained.id && equipped !== null ? unconstrained : null;
+
+    if (chosen === null) {
+      return {
+        slot,
+        pick: null,
+        emptyReason: null,
+        idealNote: null,
+        exclusivityNote: displaced ? exclusionLine(displaced, equipped!, null, slot, player) : null
+      };
+    }
+
+    const allowed = pool.filter((item) => !isExoticWeapon(item) || item.id === winner.exotic?.id);
+    const ideal = allowed[0];
+    const idealNote =
+      chosen.id === ideal.id
+        ? null
+        : 'The sheet\'s pick for this slot is ' +
+          ideal.name +
+          ' (' +
+          ideal.tierLabel +
+          '), which you cannot build yet. ' +
+          ideal.acquisition;
+    return {
+      slot,
+      pick: toPick(chosen, player, withChampion),
+      emptyReason: null,
+      idealNote,
+      exclusivityNote: displaced ? exclusionLine(displaced, equipped!, chosen, slot, player) : null
+    };
+  });
+}
+
+/**
+ * The rule, asserted at the door of every verdict: at most one exotic weapon
+ * across the slots, at most one exotic armor piece. chooseWeaponSlots makes
+ * a violation impossible by construction today; the throw is here so a
+ * future change cannot quietly ship an illegal loadout.
+ */
+export function assertLegalExotics(weaponPicks: Pick[], armorPicks: Pick[]): void {
+  const exoticWeapons = weaponPicks.filter((pick) => BAKED_ITEMS[pick.id]?.tierType === 6);
+  if (exoticWeapons.length > 1) {
+    throw new Error(
+      'Illegal loadout: ' +
+        exoticWeapons.map((pick) => pick.name).join(' + ') +
+        ' are both exotic weapons, and Destiny equips at most one.'
+    );
+  }
+  const exoticArmor = armorPicks.filter((pick) => BAKED_ITEMS[pick.id]?.tierType === 6);
+  if (exoticArmor.length > 1) {
+    throw new Error(
+      'Illegal loadout: ' +
+        exoticArmor.map((pick) => pick.name).join(' + ') +
+        ' are both exotic armor, and Destiny equips at most one.'
+    );
+  }
 }
 
 export function armorCandidates(activity: Activity, classType: GuardianClass): CuratedItem[] {
@@ -369,6 +573,12 @@ export const TRACTOR_REFRESH_WARNING: Warning = {
 
 // ----------------------------------------------------------------- rotation
 
+/**
+ * The rotation is derived FROM the final slots, never the other way around:
+ * recommend() chooses the legal loadout first (one-exotic rule applied),
+ * then this function reads only those picks. A rotation can therefore never
+ * describe a weapon the exclusivity rule just removed.
+ */
 export function buildRotation(
   slots: SlotAnswer[],
   classType: GuardianClass,
@@ -586,7 +796,7 @@ export function recommend(
   }
 
   const withChampion = activity === 'master-champions';
-  const slots = WEAPON_SLOTS.map((slot) => pickForSlot(activity, slot, player, withChampion));
+  const slots = chooseWeaponSlots(activity, player, withChampion);
   const armorAnswer = pickArmor(activity, classType, player);
   const superRec = superForClass(classType, armorAnswer.pick);
   const powerPickId = slots.find((s) => s.slot === 'power')?.pick?.id ?? null;
@@ -603,6 +813,7 @@ export function recommend(
   if (notes.some((n) => n.id === 'tractor-cannon')) warnings.push(TRACTOR_REFRESH_WARNING);
 
   const picks = slots.map((s) => s.pick).filter((p): p is Pick => p !== null);
+  assertLegalExotics(picks, armorAnswer.pick ? [armorAnswer.pick] : []);
   const buildable =
     picks.length > 0 && picks.every((p) => p.buildableNow) && (armorAnswer.pick?.buildableNow ?? true);
   const ownedCount = picks.filter((p) => p.buildableNow).length;

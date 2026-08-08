@@ -67,11 +67,36 @@ describe('the demo vault through the real parser', () => {
 });
 
 describe('the demo verdicts', () => {
-  it('Titan boss burst picks the owned rocket and names the Hezen gap', () => {
+  it('Titan boss burst keeps one exotic: Ergo Sum stays, Gjallarhorn sits out', () => {
+    // The demo owns Ergo Sum (energy, exotic) and Gjallarhorn (power,
+    // exotic). Only one exotic weapon can be equipped, the energy slot has
+    // no legendary fallback at all, so the exotic seat goes to Ergo Sum and
+    // the power slot drops to the best legendary the demo can build.
     const verdict = recommend(data, 0, 'boss-burst');
-    const power = verdict.slots.find((s) => s.slot === 'power')!;
-    expect(power.pick!.id).toBe('gjallarhorn');
+    const bySlot = new Map(verdict.slots.map((s) => [s.slot, s]));
+    expect(bySlot.get('energy')!.pick!.id).toBe('ergo-sum');
+    const power = bySlot.get('power')!;
+    expect(power.pick!.id).toBe('apex-predator');
     expect(power.idealNote).toContain('Hezen Vengeance');
+    expect(power.exclusivityNote).toContain('Gjallarhorn');
+    expect(power.exclusivityNote).toContain('one exotic weapon');
+    expect(power.exclusivityNote).toContain('Ergo Sum');
+    expect(power.exclusivityNote).toContain('Apex Predator');
+  });
+
+  it('every demo class and PvE activity shows the one-exotic note somewhere', () => {
+    // The note is part of what the site teaches, so the demo vault is shaped
+    // to surface it: Ergo Sum vs Gjallarhorn on burst, Cloudstrike vs
+    // Thunderlord on sustained, Witherhoard vs Thunderlord on add clear.
+    for (const classType of [0, 1, 2] as const) {
+      for (const activity of ['boss-burst', 'boss-sustained', 'add-clear', 'master-champions'] as const) {
+        const verdict = recommend(data, classType, activity);
+        expect(
+          verdict.slots.some((s) => s.exclusivityNote !== null),
+          classType + '/' + activity
+        ).toBe(true);
+      }
+    }
   });
 
   it('the demo next unlock is Hezen Vengeance, with its raid path', () => {

@@ -500,6 +500,13 @@ input:focus-visible {
   color: var(--muted);
 }
 
+/* The one-exotic note reads in the same honest red as the ideal-gap note,
+   wherever it lands: under a swapped pick or inside an emptied slot. */
+.pick__exclusive,
+.pick--empty .pick__exclusive {
+  color: var(--accent);
+}
+
 .pick--super .pick__name {
   margin-top: 12px;
 }

@@ -95,8 +95,22 @@ describe('swap-speed exotics, class filtered', () => {
 
 describe('the Izanagi two-or-three plan', () => {
   it('fires when Izanagi anchors the kinetic slot', () => {
-    const rotation = rotationFor(['izanagis-burden', 'thunderlord'], 0, 'boss-sustained')!;
+    // Izanagi alone: adding Thunderlord (the old fixture) makes an illegal
+    // two-exotic pair, and the engine now rightly gives the exotic seat to
+    // the power slot in that case.
+    const rotation = rotationFor(['izanagis-burden'], 0, 'boss-sustained')!;
     expect(rotation.title).toBe(TWO_VS_THREE.title);
+  });
+
+  it('does NOT fire when the one-exotic rule gives the seat to the power slot', () => {
+    // Izanagi plus Thunderlord cannot both be equipped. The seat goes to
+    // Thunderlord, the kinetic falls back, and the rotation shown must be
+    // achievable by the final legal loadout: no Izanagi loop here.
+    const verdict = recommend(player(['izanagis-burden', 'thunderlord']), 0, 'boss-sustained');
+    const kinetic = verdict.slots.find((s) => s.slot === 'kinetic')!;
+    expect(kinetic.pick?.id).not.toBe('izanagis-burden');
+    expect(verdict.rotation!.title).not.toBe(TWO_VS_THREE.title);
+    expect(verdict.rotation!.title).toContain('Thunderlord');
   });
 
   it('quotes the measured 4 percent and recommends the simpler rotation', () => {
@@ -108,7 +122,9 @@ describe('the Izanagi two-or-three plan', () => {
 
 describe('the Envious loop', () => {
   it('fires when Witherhoard anchors the kinetic slot', () => {
-    const rotation = rotationFor(['witherhoard', 'thunderlord'], 0, 'boss-sustained')!;
+    // Witherhoard alone: the old fixture added Thunderlord, which made an
+    // illegal two-exotic pair the engine no longer produces.
+    const rotation = rotationFor(['witherhoard'], 0, 'boss-sustained')!;
     expect(rotation.title).toBe(ENVIOUS_LOOP.title);
   });
 

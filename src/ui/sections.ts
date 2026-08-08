@@ -149,10 +149,20 @@ function pickCard(pick: Pick, slotTitle: string): string {
 }
 
 function emptySlotCard(slot: SlotAnswer): string {
+  // Two honest ways for a slot to be empty: the sourced data has nothing
+  // (emptyReason), or the slot's best weapon is an exotic the one-exotic
+  // rule spent elsewhere (exclusivityNote).
+  const reason = slot.emptyReason
+    ? `<p class="pick__reason">${escapeText(slot.emptyReason)}</p>`
+    : '';
+  const exclusive = slot.exclusivityNote
+    ? `<p class="pick__reason pick__exclusive">${escapeText(slot.exclusivityNote)}</p>`
+    : '';
   return (
     `<div class="pick pick--empty">` +
     `<div class="pick__slot">${escapeText(slot.slot.charAt(0).toUpperCase() + slot.slot.slice(1))}</div>` +
-    `<p class="pick__reason">${escapeText(slot.emptyReason ?? '')}</p>` +
+    reason +
+    exclusive +
     `</div>`
   );
 }
@@ -171,10 +181,13 @@ export function answerSection(verdict: Verdict): string {
   const slotCards = verdict.slots
     .map((slot) => {
       if (!slot.pick) return emptySlotCard(slot);
+      const exclusive = slot.exclusivityNote
+        ? `<p class="pick__ideal pick__exclusive">${escapeText(slot.exclusivityNote)}</p>`
+        : '';
       const ideal = slot.idealNote
         ? `<p class="pick__ideal">${escapeText(slot.idealNote)}</p>`
         : '';
-      return pickCard(slot.pick, slot.pick.slotName) + ideal;
+      return pickCard(slot.pick, slot.pick.slotName) + exclusive + ideal;
     })
     .map((html) => `<div class="answer__cell">${html}</div>`)
     .join('');
