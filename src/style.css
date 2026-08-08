@@ -871,3 +871,222 @@ input:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+/* ------------------------------------------------------- encounter picker */
+
+.picker__select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: var(--font);
+  max-width: 100%;
+}
+
+.picker__select:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.picker__group--strip {
+  flex-wrap: wrap;
+}
+
+.chip--dim {
+  opacity: 0.45;
+}
+
+.chip--dim.chip--on {
+  opacity: 0.8;
+}
+
+/* ------------------------------------------------------- encounter cards */
+
+.ecard--bonus {
+  border-color: #2e5d3a;
+}
+
+.ecard--bonus .warning__title {
+  color: #7fc98f;
+}
+
+.ecard--info {
+  border-color: var(--line);
+}
+
+.ecard--info .warning__title {
+  color: var(--muted);
+}
+
+.pick__encounter {
+  color: #d8a03c;
+}
+
+.answer__tracking {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+/* -------------------------------------------------------- encounter facts */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.fact {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fact__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.fact__value {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.facts__confidence,
+.facts__gap {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.facts__gap {
+  border-left: 3px solid var(--accent-deep);
+  padding-left: 10px;
+}
+
+/* ----------------------------------------------------------- alternatives */
+
+.alt {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+
+.alt__title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.alt__row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 0;
+  flex-wrap: wrap;
+}
+
+.alt__slot {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  min-width: 64px;
+}
+
+.alt__name--empty {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.alt__exotic {
+  font-size: 11px;
+  color: #d8a03c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.alt__missing {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------- arsenal */
+
+.ars__filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.ars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ars__row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ars__icon {
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.ars__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ars__name {
+  font-weight: 600;
+}
+
+.ars__meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ars__roll {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ars__flag {
+  font-size: 12px;
+  color: #d8a03c;
+}
+
+.ars__unsourced {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ars__excluded {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ars__exwhy {
+  color: var(--faint);
+  margin-top: 4px;
+}

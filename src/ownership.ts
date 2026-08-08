@@ -70,7 +70,8 @@ export function collectibleAcquired(state: number | undefined): boolean {
   return (state & 1) === 0;
 }
 
-function eachItem(response: ProfileResponse, fn: (item: ApiItem) => void): void {
+/** Walk every item the profile carries, vault and characters alike. */
+export function eachItem(response: ProfileResponse, fn: (item: ApiItem) => void): void {
   for (const item of response.profileInventory?.data?.items ?? []) fn(item);
   const perCharacter = response.characterInventories?.data ?? {};
   for (const bucket of Object.values(perCharacter)) for (const item of bucket.items ?? []) fn(item);

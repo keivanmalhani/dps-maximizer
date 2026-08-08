@@ -396,7 +396,7 @@ export const CURATED: CuratedItem[] = [
     tierLabel: 'Tier 3',
     quote: 'still useful in high-pressure environments for Thunderlord/Queenbreaker',
     note:
-      'Makes a crit bubble anyone can hit and weakens the target. WARNING, hard-coded on purpose: Divinity is disabled entirely on Pantheon and against Insurrection Prime since hotfix 9.7.0.3. The page repeats this wherever Divinity is recommended.',
+      'Makes a crit bubble anyone can hit and weakens the target. WARNING, hard-coded on purpose: since hotfix 9.7.0.3 Divinity deals zero damage to Insurrection Prime and its cage does not damage him; it works everywhere else. The page repeats this wherever Divinity is recommended.',
     source: AEGIS,
     roles: ['boss-sustained', 'master-champions'],
     supportOnly: true,

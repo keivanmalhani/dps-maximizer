@@ -181,10 +181,14 @@ describe('specific honesty commitments', () => {
     }
   });
 
-  it('hard-codes the Divinity Pantheon warning into its note', () => {
+  it('hard-codes the Divinity/Insurrection Prime warning into its note', () => {
+    // The 2026-08-08 encounter research brief corrected the earlier claim:
+    // the hotfix's scope is Insurrection Prime only (zero damage, no cage
+    // damage; Fallen Tech blocks the weapon), and Divinity works everywhere
+    // else. The note asserts the corrected fact, not the folklore version.
     const divinity = CURATED_BY_ID.get('divinity')!;
-    expect(divinity.note).toContain('disabled entirely on Pantheon');
-    expect(divinity.note).toContain('Insurrection Prime');
+    expect(divinity.note).toContain('zero damage to Insurrection Prime');
+    expect(divinity.note).toContain('works everywhere else');
     expect(divinity.note).toContain('9.7.0.3');
   });
 

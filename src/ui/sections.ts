@@ -5,11 +5,26 @@
 
 import { ARMOR_STATS_SOURCE, POWERHOUSE_NOTE, STAT_EFFECTS } from '../data/armor-stats';
 import { BUCKETS, BUFFS_SOURCE, MYTHS, ODDITIES, PENDING_NOTE } from '../data/buffs';
+import {
+  ACTIVITIES,
+  PROFILE_CONFIDENCE_NOTE,
+  RESEARCH_SOURCE,
+  ruleLine,
+  type ActivityKind
+} from '../data/encounters';
 import { iconUrl, MANIFEST_VERSION, BAKED_ITEMS } from '../data/items';
 import { DATA_STAMP, TIER_SOURCE } from '../data/tiers';
 import { escapeText, clampStat } from '../format';
-import type { Pick, SlotAnswer, Verdict } from '../recommend';
+import type { EncounterVerdict } from '../encounter';
+import type { LoadoutAlternative, Pick, SlotAnswer, Verdict } from '../recommend';
+import type {
+  ArsenalFilters,
+  RankedArsenal,
+  RankedArsenalRow
+} from '../arsenal';
 import type { SignInView } from '../signin';
+import type { RunTarget } from '../url-state';
+import { DEFAULT_TARGET } from '../url-state';
 import type { Activity, CharacterInfo, GuardianClass } from '../types';
 import { ACTIVITY_LABELS, CLASS_NAMES } from '../types';
 
@@ -21,6 +36,16 @@ export interface PageModel {
   activity: Activity;
   availableClasses: GuardianClass[];
   character: CharacterInfo | null;
+  /** The run target; older callers without one mean the default mode. */
+  target?: RunTarget;
+}
+
+/** Everything the encounter-aware page adds around the core verdict. */
+export interface PageExtras {
+  encounter?: EncounterVerdict;
+  alternatives?: LoadoutAlternative[];
+  /** True to auto-load the arsenal table (encounter pages do). */
+  arsenalAuto?: boolean;
 }
 
 function section(eyebrow: string, title: string, body: string, rule = true): string {
@@ -78,7 +103,54 @@ export function runbar(model: PageModel, account: SignInView): string {
 
 // ------------------------------------------------------------------- picker
 
+const KIND_GROUP_LABELS: Record<ActivityKind, string> = {
+  raid: 'Raids',
+  dungeon: 'Dungeons',
+  pantheon: 'Pantheon'
+};
+
+function activitySelect(target: RunTarget): string {
+  const selected = target.kind === 'encounter' ? target.activityId : '';
+  const groups = (['raid', 'dungeon', 'pantheon'] as ActivityKind[])
+    .map((kind) => {
+      const options = ACTIVITIES.filter((a) => a.kind === kind)
+        .map(
+          (a) =>
+            `<option value="${escapeText(a.id)}"${a.id === selected ? ' selected' : ''}>` +
+            `${escapeText(a.name)}</option>`
+        )
+        .join('');
+      return `<optgroup label="${escapeText(KIND_GROUP_LABELS[kind])}">${options}</optgroup>`;
+    })
+    .join('');
+  return (
+    `<select id="activity-select" class="picker__select" aria-label="Pick a raid, dungeon or Pantheon gauntlet">` +
+    `<option value=""${selected === '' ? ' selected' : ''}>Pick a raid or dungeon...</option>` +
+    groups +
+    `</select>`
+  );
+}
+
+function encounterStrip(target: RunTarget): string {
+  if (target.kind !== 'encounter') return '';
+  const activity = ACTIVITIES.find((a) => a.id === target.activityId);
+  if (!activity) return '';
+  const chips = activity.encounters
+    .map((encounter) => {
+      const on = encounter.id === target.encounterId ? ' chip--on' : '';
+      const dim = encounter.type === 'none' ? ' chip--dim' : '';
+      return (
+        `<button class="chip${on}${dim}" type="button" data-encounter="${escapeText(encounter.id)}"` +
+        ` title="${encounter.type === 'none' ? 'No damage check here' : escapeText(encounter.name)}">` +
+        `${escapeText(encounter.name)}</button>`
+      );
+    })
+    .join('');
+  return `<div class="picker__group picker__group--strip"><span class="picker__label">Encounter</span>${chips}</div>`;
+}
+
 export function pickerSection(model: PageModel): string {
+  const target = model.target ?? DEFAULT_TARGET;
   const classButtons = model.availableClasses
     .map(
       (classType) =>
@@ -91,7 +163,7 @@ export function pickerSection(model: PageModel): string {
   const activityButtons = activities
     .map(
       (activity) =>
-        `<button class="chip${activity === model.activity ? ' chip--on' : ''}" type="button" ` +
+        `<button class="chip${target.kind === 'mode' && activity === model.activity ? ' chip--on' : ''}" type="button" ` +
         `data-activity="${activity}">${escapeText(ACTIVITY_LABELS[activity])}</button>`
     )
     .join('');
@@ -99,7 +171,8 @@ export function pickerSection(model: PageModel): string {
   return (
     `<section class="picker" id="picker">` +
     `<div class="picker__group"><span class="picker__label">Class</span>${classButtons}</div>` +
-    `<div class="picker__group"><span class="picker__label">Doing what</span>${activityButtons}</div>` +
+    `<div class="picker__group"><span class="picker__label">Doing what</span>${activityButtons}${activitySelect(target)}</div>` +
+    encounterStrip(target) +
     `</section>`
   );
 }
@@ -167,7 +240,7 @@ function emptySlotCard(slot: SlotAnswer): string {
   );
 }
 
-export function answerSection(verdict: Verdict): string {
+export function answerSection(verdict: Verdict, encounter?: EncounterVerdict): string {
   if (verdict.outOfScope) {
     return (
       `<section class="section answer" id="answer">` +
@@ -180,14 +253,17 @@ export function answerSection(verdict: Verdict): string {
 
   const slotCards = verdict.slots
     .map((slot) => {
-      if (!slot.pick) return emptySlotCard(slot);
+      const encounterNote = slot.encounterNote
+        ? `<p class="pick__ideal pick__encounter">${escapeText(slot.encounterNote)}</p>`
+        : '';
+      if (!slot.pick) return emptySlotCard(slot) + encounterNote;
       const exclusive = slot.exclusivityNote
         ? `<p class="pick__ideal pick__exclusive">${escapeText(slot.exclusivityNote)}</p>`
         : '';
       const ideal = slot.idealNote
         ? `<p class="pick__ideal">${escapeText(slot.idealNote)}</p>`
         : '';
-      return pickCard(slot.pick, slot.pick.slotName) + exclusive + ideal;
+      return pickCard(slot.pick, slot.pick.slotName) + encounterNote + exclusive + ideal;
     })
     .map((html) => `<div class="answer__cell">${html}</div>`)
     .join('');
@@ -213,8 +289,10 @@ export function answerSection(verdict: Verdict): string {
       `</div></div>`
     : '';
 
-  const fireteam =
-    verdict.fireteamNotes.length > 0
+  const fireteam = encounter?.fireteamOverride
+    ? `<div class="fireteam"><div class="fireteam__title">Fireteam jobs, not your slots</div>` +
+      `<p class="fireteam__why">${escapeText(encounter.fireteamOverride)}</p></div>`
+    : verdict.fireteamNotes.length > 0
       ? `<div class="fireteam"><div class="fireteam__title">Fireteam jobs, not your slots</div>` +
         `<p class="fireteam__why">Debuffs and ally buffs multiply with everything above, but somebody else can carry them. One each is enough; two of the same is wasted.</p>` +
         verdict.fireteamNotes
@@ -248,6 +326,28 @@ export function answerSection(verdict: Verdict): string {
     )
     .join('');
 
+  // Encounter rule cards: the DR overrides, bonuses and mechanics that make
+  // this page different from the generic one, each tied to its rule id.
+  const encounterCards = (encounter?.cards ?? [])
+    .map(
+      (card) =>
+        `<div class="warning ecard ecard--${card.tone}" data-ecard="${escapeText(card.ruleId)}">` +
+        `<div class="warning__title">${escapeText(card.title)}</div>` +
+        `<p class="warning__body">${escapeText(card.body)} <span class="src">${escapeText(card.source)}</span></p>` +
+        `</div>`
+    )
+    .join('');
+
+  const superCaution = encounter?.superCaution
+    ? `<div class="warning ecard ecard--warning" data-ecard="super-caution">` +
+      `<div class="warning__title">Watch your super here</div>` +
+      `<p class="warning__body">${escapeText(encounter.superCaution)}</p></div>`
+    : '';
+
+  const trackingNote = encounter?.trackingNote
+    ? `<p class="prose answer__tracking">${escapeText(encounter.trackingNote)}</p>`
+    : '';
+
   return (
     `<section class="section answer" id="answer">` +
     `<div class="eyebrow">The answer</div>` +
@@ -256,7 +356,10 @@ export function answerSection(verdict: Verdict): string {
     `<div class="answer__grid">${slotCards}${armor}${superCard}</div>` +
     fireteam +
     champions +
+    encounterCards +
+    superCaution +
     warningCards +
+    trackingNote +
     `</section>`
   );
 }
@@ -369,6 +472,248 @@ export function buffsSection(): string {
   return section('The arithmetic', 'What stacks, what does not, and the myths', body);
 }
 
+// -------------------------------------------------------- encounter surfaces
+
+/** The facts panel: window, range, movement, crit, and every sourced rule. */
+export function encounterFactsSection(ev: EncounterVerdict): string {
+  const encounter = ev.encounter;
+  const window = encounter.window;
+  const facts: Array<[string, string]> = [
+    [
+      'Damage window',
+      window
+        ? (window.seconds !== null ? window.seconds + 's' : 'seconds unpublished') +
+          (window.note ? ' - ' + window.note : '')
+        : 'No damage check'
+    ],
+    ['Window style', window?.style ?? 'unknown'],
+    ['Range', encounter.range ?? 'unrecorded'],
+    ['Movement', encounter.movement ?? 'unrecorded'],
+    ['Crit', encounter.crit ?? 'unrecorded']
+  ];
+  const factRows = facts
+    .map(
+      ([label, value]) =>
+        `<div class="fact"><span class="fact__label">${escapeText(label)}</span>` +
+        `<span class="fact__value">${escapeText(value)}</span></div>`
+    )
+    .join('');
+
+  const rules = [...encounter.specialRules, ...ev.activity.notes];
+  const ruleItems =
+    rules.length > 0
+      ? rules
+          .map(
+            (r) =>
+              `<li data-rule="${escapeText(r.id)}">${escapeText(ruleLine(r))} ` +
+              `<span class="src">${escapeText(r.source)} [confidence ${escapeText(r.confidence)}]</span></li>`
+          )
+          .join('')
+      : `<li>No special rules are recorded for this encounter.</li>`;
+
+  const consensus = ev.consensusLine
+    ? `<p class="prose facts__gap">${escapeText(ev.consensusLine)}</p>`
+    : '';
+
+  const body =
+    `<div class="facts">${factRows}</div>` +
+    `<p class="prose facts__confidence">${escapeText(PROFILE_CONFIDENCE_NOTE)} Source: ${escapeText(
+      window?.source ?? RESEARCH_SOURCE
+    )}.</p>` +
+    `<ul class="notes facts__rules">${ruleItems}</ul>` +
+    consensus;
+  return section(
+    'This encounter, sourced',
+    encounter.name + ': the rules the loadout is bent around',
+    body
+  );
+}
+
+/** The honest page for an encounter with nothing to maximize. */
+export function noDpsSection(ev: EncounterVerdict): string {
+  const note = ev.noDps!;
+  const rules =
+    ev.cards.length > 0
+      ? `<ul class="notes">${ev.cards
+          .map((card) => `<li>${escapeText(card.body)} <span class="src">${escapeText(card.source)}</span></li>`)
+          .join('')}</ul>`
+      : '';
+  return (
+    `<section class="section answer" id="answer">` +
+    `<div class="eyebrow">${escapeText(ev.activity.name)}</div>` +
+    `<h1 class="answer__headline">${escapeText(ev.encounter.name)}: ${escapeText(note.title.toLowerCase())}</h1>` +
+    `<p class="prose">${escapeText(note.body)}</p>` +
+    rules +
+    `</section>`
+  );
+}
+
+/** Options B and C: the next-best legal ways to spend the exotic seat. */
+export function alternativesSection(alternatives: LoadoutAlternative[]): string {
+  if (alternatives.length === 0) return '';
+  const letters = ['B', 'C', 'D'];
+  const blocks = alternatives
+    .map((alt, index) => {
+      const label = alt.equippedExoticId
+        ? 'spends the exotic seat on ' +
+          (alt.slots.find((s) => s.item?.id === alt.equippedExoticId)?.item?.name ?? alt.equippedExoticId)
+        : 'runs no exotic weapon at all';
+      const rows = alt.slots
+        .map((slot) => {
+          if (!slot.item) {
+            return `<div class="alt__row"><span class="alt__slot">${escapeText(slot.slot)}</span>` +
+              `<span class="alt__name alt__name--empty">nothing tiered fits this seat</span></div>`;
+          }
+          const exotic = BAKED_ITEMS[slot.item.id]?.tierType === 6 ? ' <span class="alt__exotic">exotic</span>' : '';
+          const owned = slot.buildable ? '' : ' <span class="alt__missing">not owned</span>';
+          return (
+            `<div class="alt__row"><span class="alt__slot">${escapeText(slot.slot)}</span>` +
+            `<span class="alt__name">${escapeText(slot.item.name)}</span> ${tierChip(slot.item.tierLabel)}${exotic}${owned}</div>`
+          );
+        })
+        .join('');
+      return (
+        `<div class="alt" data-alt="${letters[index] ?? index}">` +
+        `<div class="alt__title">Option ${letters[index] ?? index + 1}: ${escapeText(label)}</div>` +
+        rows +
+        `</div>`
+      );
+    })
+    .join('');
+  const body =
+    `<p class="prose">The answer above is the best legal combination this engine can defend. These are the next-best ` +
+    `LEGAL builds that are meaningfully different - a different exotic seat or none - not a one-slot reshuffle. ` +
+    `Every one obeys the one-exotic rule by construction.</p>` +
+    blocks;
+  return section('Other legal builds', 'If the answer does not suit you', body);
+}
+
+// ----------------------------------------------------------------- arsenal
+
+const ARSENAL_TITLE = 'Everything you own that fits';
+
+/** The empty shell; the app fills it after the lazy chunk arrives. */
+export function arsenalShellSection(autoLoad: boolean): string {
+  const body = autoLoad
+    ? `<p class="prose" id="arsenal-status">Reading your full arsenal (loads separately so the page stays fast)...</p>` +
+      `<div id="arsenal-table"></div>`
+    : `<p class="prose">The full arsenal table (all 900+ weapons, your rolls against the damage-perk list) loads on demand ` +
+      `so the first paint stays light.</p>` +
+      `<button class="btn btn--ghost" type="button" id="arsenal-load">Load the arsenal table</button>` +
+      `<div id="arsenal-table"></div>`;
+  return (
+    `<section class="section section--rule" id="arsenal">` +
+    `<div class="eyebrow">The deep inventory</div>` +
+    `<h2 class="section__title">${escapeText(ARSENAL_TITLE)}</h2>` +
+    body +
+    `</section>`
+  );
+}
+
+function rollLineFor(row: RankedArsenalRow): string {
+  if (row.weapon.tierType === 6) {
+    return 'Exotic: perks are fixed, so the damage-roll layer does not apply.';
+  }
+  if (row.rollPerks === null) {
+    return 'Sockets not readable for your copies; the roll is reported unknown, not guessed.';
+  }
+  if (row.rollPerks.length > 0) {
+    return 'Your roll: ' + row.rollPerks.join(' + ') + '.';
+  }
+  if (row.wishlist.length > 0) {
+    return 'Your copy lacks a damage roll; wishlist: ' + row.wishlist.join(', ') + '.';
+  }
+  return 'No curated damage perk can roll on this weapon.';
+}
+
+/** The ranked, filterable owned-arsenal table. Pure string in, string out. */
+export function arsenalTableHtml(
+  ranked: RankedArsenal,
+  filters: ArsenalFilters,
+  iconPrefix: string,
+  contextLabel: string
+): string {
+  const filtered = ranked.rows.filter((row) => {
+    if (filters.slot !== 'all' && row.weapon.slot !== filters.slot) return false;
+    if (filters.archetype !== 'all' && row.weapon.archetype !== filters.archetype) return false;
+    if (filters.damageRollOnly && !(row.rollPerks && row.rollPerks.length > 0)) return false;
+    return true;
+  });
+
+  const slotChips = (['all', 'kinetic', 'energy', 'power'] as const)
+    .map(
+      (slot) =>
+        `<button class="chip${filters.slot === slot ? ' chip--on' : ''}" type="button" data-arsslot="${slot}">` +
+        `${slot === 'all' ? 'All slots' : slot.charAt(0).toUpperCase() + slot.slice(1)}</button>`
+    )
+    .join('');
+  const archetypes = [...new Set(ranked.rows.map((r) => r.weapon.archetype))].sort();
+  const archetypeOptions =
+    `<option value="all"${filters.archetype === 'all' ? ' selected' : ''}>All archetypes</option>` +
+    archetypes
+      .map(
+        (a) =>
+          `<option value="${escapeText(a)}"${filters.archetype === a ? ' selected' : ''}>${escapeText(a)}</option>`
+      )
+      .join('');
+  const rollChip =
+    `<button class="chip${filters.damageRollOnly ? ' chip--on' : ''}" type="button" data-arsroll="toggle">` +
+    `Has damage roll</button>`;
+
+  const rows = filtered
+    .map((row) => {
+      const icon = row.weapon.icon
+        ? `<img class="ars__icon" src="${escapeText(iconUrl(iconPrefix + row.weapon.icon))}" alt="" width="36" height="36" loading="lazy" />`
+        : '';
+      const tier = row.tierLabel
+        ? ` ${tierChip(row.tierLabel)}`
+        : '';
+      const flags = row.flags
+        .map((flag) => `<span class="ars__flag" data-flag="${escapeText(flag.ruleId)}">${escapeText(flag.text)}</span>`)
+        .join('');
+      const unsourced = row.archetypeSourced
+        ? ''
+        : `<span class="ars__unsourced" title="This archetype sits outside the sourced order and is listed, not ranked.">unranked tail</span>`;
+      return (
+        `<div class="ars__row" data-hash="${row.weapon.hash}">` +
+        icon +
+        `<div class="ars__main"><span class="ars__name">${escapeText(row.weapon.name)}</span>${tier}` +
+        `<span class="ars__meta">${escapeText(row.weapon.slot)} - ${escapeText(row.weapon.itemTypeDisplayName)}` +
+        `${row.weapon.frame ? ' - ' + escapeText(row.weapon.frame) : ''}` +
+        `${row.instanceCount > 1 ? ' - x' + row.instanceCount : ''}</span>` +
+        `<span class="ars__roll">${escapeText(rollLineFor(row))}</span>` +
+        flags +
+        unsourced +
+        `</div></div>`
+      );
+    })
+    .join('');
+
+  const excluded =
+    ranked.excluded.length > 0
+      ? `<div class="ars__excluded"><b>Excluded here (${ranked.excluded.length}):</b> ` +
+        ranked.excluded
+          .map(
+            (x) =>
+              `<span class="ars__exname" data-flag="${escapeText(x.flag.ruleId)}">${escapeText(
+                x.row.weapon.name
+              )}</span>`
+          )
+          .join(', ') +
+        `<p class="ars__exwhy">${escapeText(ranked.excluded[0].flag.text)}</p></div>`
+      : '';
+
+  return (
+    `<p class="prose">Owned weapons only, ranked for ${escapeText(contextLabel)}. ${escapeText(ranked.orderNote)}</p>` +
+    `<div class="ars__filters" id="arsenal-filters">${slotChips}` +
+    `<select id="ars-archetype" class="picker__select" aria-label="Filter by archetype">${archetypeOptions}</select>` +
+    rollChip +
+    `</div>` +
+    `<div class="ars">${rows || '<p class="prose">Nothing owned matches these filters.</p>'}</div>` +
+    excluded
+  );
+}
+
 // ------------------------------------------------------------------- extras
 
 export function classNotesSection(verdict: Verdict): string {
@@ -396,13 +741,35 @@ export function footerSection(): string {
 }
 
 /** Everything below the masthead, assembled. */
-export function resultPage(model: PageModel, verdict: Verdict, account: SignInView): string {
+export function resultPage(
+  model: PageModel,
+  verdict: Verdict,
+  account: SignInView,
+  extras: PageExtras = {}
+): string {
+  const ev = extras.encounter;
+  if (ev && ev.noDps) {
+    return (
+      `<div class="shell">` +
+      runbar(model, account) +
+      pickerSection(model) +
+      noDpsSection(ev) +
+      buffsSection() +
+      footerSection() +
+      `</div>`
+    );
+  }
+  const alternatives = extras.alternatives ?? ev?.alternatives ?? [];
+  const showArsenal = !verdict.outOfScope;
   return (
     `<div class="shell">` +
     runbar(model, account) +
     pickerSection(model) +
-    answerSection(verdict) +
+    answerSection(verdict, ev) +
+    (ev ? encounterFactsSection(ev) : '') +
+    (verdict.outOfScope ? '' : alternativesSection(alternatives)) +
     rotationSection(verdict) +
+    (showArsenal ? arsenalShellSection(extras.arsenalAuto ?? false) : '') +
     nextUnlockSection(verdict) +
     (verdict.outOfScope ? '' : statsSection(model)) +
     buffsSection() +

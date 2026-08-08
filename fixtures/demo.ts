@@ -73,6 +73,55 @@ const COLLECTIONS_ONLY: string[] = [
   'edge-transit'
 ];
 
+/**
+ * Arsenal-only weapons in the demo vault, so the "everything you own that
+ * fits" table can demonstrate both roll states signed out. Hashes and plug
+ * hashes are literal manifest facts, written out here rather than imported,
+ * because importing arsenal.json from this fixture would drag half a
+ * megabyte into the first paint; tests/arsenal-rolls.test.ts cross-checks
+ * every one of these numbers against arsenal.json from the test side.
+ *
+ * - Cataphract GL3: heavy GL with a real damage roll (Envious Assassin +
+ *   Bait and Switch) so the table shows "Your roll: ...".
+ * - Commemoration: machine gun with sockets exposed and no damage perk, so
+ *   the table shows the wishlist state.
+ * - Truth: intrinsic-tracking exotic rocket, so the Oryx and Witness pages
+ *   can demonstrate the setpiece exclusion.
+ * - Sleeper Simulant: so the Morgeth page can demonstrate the named 40
+ *   percent resistance flag.
+ */
+export const DEMO_ARSENAL_INSTANCES: Array<{
+  name: string;
+  itemHash: number;
+  instanceId: string;
+  plugs: number[];
+}> = [
+  {
+    name: 'Cataphract GL3',
+    itemHash: 2738601016,
+    instanceId: 'demo-cataphract-1',
+    plugs: [424370782, 3078487919] // Envious Assassin, Bait and Switch
+  },
+  {
+    name: 'Commemoration',
+    itemHash: 4230965989,
+    instanceId: 'demo-commemoration-1',
+    plugs: [] // sockets exposed, no damage perk: the wishlist state
+  },
+  {
+    name: 'Truth',
+    itemHash: 1201830623,
+    instanceId: 'demo-truth-1',
+    plugs: []
+  },
+  {
+    name: 'Sleeper Simulant',
+    itemHash: 4036115577,
+    instanceId: 'demo-sleeper-1',
+    plugs: []
+  }
+];
+
 export const DEMO_CIPHERS = 3;
 
 function stats(values: Partial<Record<keyof typeof STAT_HASHES, number>>): Record<string, number> {
@@ -89,6 +138,9 @@ export function buildDemoProfile(): ProfileResponse {
     itemInstanceId: entry.instanceId,
     quantity: 1
   }));
+  for (const entry of DEMO_ARSENAL_INSTANCES) {
+    vaultItems.push({ itemHash: entry.itemHash, itemInstanceId: entry.instanceId, quantity: 1 });
+  }
   vaultItems.push({ itemHash: CIPHER_HASH, quantity: DEMO_CIPHERS });
 
   const collectibles: Record<string, { state: number }> = {};
@@ -102,6 +154,11 @@ export function buildDemoProfile(): ProfileResponse {
   for (const entry of INSTANCES) {
     sockets[entry.instanceId] = {
       sockets: (entry.plugs ?? []).map((plugHash) => ({ plugHash, isEnabled: true }))
+    };
+  }
+  for (const entry of DEMO_ARSENAL_INSTANCES) {
+    sockets[entry.instanceId] = {
+      sockets: entry.plugs.map((plugHash) => ({ plugHash, isEnabled: true }))
     };
   }
 

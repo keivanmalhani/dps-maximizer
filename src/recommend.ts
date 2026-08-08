@@ -69,6 +69,13 @@ export interface SlotAnswer {
    * card says so instead of silently showing the runner-up.
    */
   exclusivityNote: string | null;
+  /**
+   * Set when an encounter rule moved or marked this slot's answer: an
+   * exclusion (swords at far range), a demotion (snipers into a proxy
+   * target) or a promotion (swords at Crota). Always names the rule it came
+   * from, because encounter adjustments are traceable or they are folklore.
+   */
+  encounterNote: string | null;
 }
 
 export interface RotationPlan {
@@ -135,10 +142,14 @@ function tierRank(item: CuratedItem): number {
   return item.tier === null ? 3.5 : item.tier;
 }
 
-function orderCandidates(items: CuratedItem[]): CuratedItem[] {
+function orderCandidates(
+  items: CuratedItem[],
+  rankDelta?: (item: CuratedItem) => number
+): CuratedItem[] {
   const indexOf = new Map(CURATED.map((item, index) => [item.id, index]));
+  const rank = (item: CuratedItem) => tierRank(item) + (rankDelta ? rankDelta(item) : 0);
   return [...items].sort((a, b) => {
-    const byTier = tierRank(a) - tierRank(b);
+    const byTier = rank(a) - rank(b);
     if (byTier !== 0) return byTier;
     return (indexOf.get(a.id) ?? 0) - (indexOf.get(b.id) ?? 0);
   });
@@ -286,12 +297,17 @@ export interface LoadoutScore {
   centerpieceQuality: number;
 }
 
-export function scoreLoadout(slots: ComboSlot[]): LoadoutScore {
+export function scoreLoadout(
+  slots: ComboSlot[],
+  rankDelta?: (item: CuratedItem) => number
+): LoadoutScore {
+  const quality = (item: CuratedItem | null, buildable: boolean) =>
+    slotQuality(item, buildable) + (item !== null && rankDelta ? rankDelta(item) : 0);
   let buildableCount = 0;
   let totalQuality = 0;
   for (const entry of slots) {
     if (entry.item !== null && entry.buildable) buildableCount += 1;
-    totalQuality += slotQuality(entry.item, entry.buildable);
+    totalQuality += quality(entry.item, entry.buildable);
   }
   const centerpiece =
     slots.find((entry) => entry.slot === 'power' && entry.item !== null) ??
@@ -302,7 +318,7 @@ export function scoreLoadout(slots: ComboSlot[]): LoadoutScore {
     buildableCount,
     totalQuality,
     centerpieceQuality: centerpiece
-      ? slotQuality(centerpiece.item, centerpiece.buildable)
+      ? quality(centerpiece.item, centerpiece.buildable)
       : EMPTY_SLOT_QUALITY
   };
 }
@@ -347,6 +363,40 @@ function exclusionLine(
   return claim + rule + 'the best ' + fallbackKind + ' here is ' + fallback.name + ' (' + fallback.tierLabel + ').';
 }
 
+// ------------------------------------------------- encounter adjustments
+//
+// An encounter can bend the search three ways, each carrying the rule id it
+// came from so every adjustment is traceable to a sourced line in
+// src/data/encounters.ts: exclude an item outright (swords at far range,
+// tracking weapons at a setpiece), demote it (snipers into a proxy target or
+// anti-sniper DR), or promote it (swords at Crota). Demotion and promotion
+// shift the tier rank the ordering and scoring already run on; they never
+// touch legality, which stays the job of the one-exotic rule.
+
+export interface AdjustReason {
+  ruleId: string;
+  text: string;
+}
+
+export interface EncounterAdjust {
+  /** Non-null removes the item from every pool, with the sourced reason. */
+  exclude: (item: CuratedItem) => AdjustReason | null;
+  /** Positive demotes, negative promotes, zero leaves alone. */
+  rankDelta: (item: CuratedItem) => number;
+  /** The sourced explanation for a non-zero rankDelta. */
+  note: (item: CuratedItem) => AdjustReason | null;
+}
+
+export const DEMOTE_RANK_DELTA = 2;
+export const PROMOTE_RANK_DELTA = -0.75;
+
+interface SearchResult {
+  winner: { exotic: CuratedItem | null; combo: ComboSlot[]; score: LoadoutScore };
+  /** Every distinct way to spend the exotic seat, best first. */
+  options: Array<{ equippedExoticId: string | null; combo: ComboSlot[]; score: LoadoutScore }>;
+  pools: Array<{ slot: WeaponSlot; pool: CuratedItem[]; rawPool: CuratedItem[] }>;
+}
+
 /**
  * The legal-combination search. For each candidate way to spend the one
  * exotic weapon slot (each exotic candidate in any slot, plus "no exotic"),
@@ -355,29 +405,99 @@ function exclusionLine(
  * Options are tried in sheet order with "no exotic" last, so a dead tie
  * resolves to the sheet's own ranking.
  */
-export function chooseWeaponSlots(
+function searchCombinations(
   activity: Activity,
   player: PlayerData,
-  withChampion: boolean
-): SlotAnswer[] {
-  const pools = WEAPON_SLOTS.map((slot) => ({ slot, pool: weaponCandidates(activity, slot) }));
+  adjust?: EncounterAdjust
+): SearchResult {
+  const delta = adjust ? adjust.rankDelta : undefined;
+  const pools = WEAPON_SLOTS.map((slot) => {
+    const rawPool = weaponCandidates(activity, slot);
+    const pool = adjust
+      ? orderCandidates(rawPool.filter((item) => adjust.exclude(item) === null), delta)
+      : rawPool;
+    return { slot, pool, rawPool };
+  });
 
   const exoticOptions: Array<CuratedItem | null> = orderCandidates(
-    pools.flatMap(({ pool }) => pool.filter((item) => isExoticWeapon(item)))
+    pools.flatMap(({ pool }) => pool.filter((item) => isExoticWeapon(item))),
+    delta
   );
   exoticOptions.push(null);
 
-  let best: { exotic: CuratedItem | null; combo: ComboSlot[]; score: LoadoutScore } | null = null;
+  let best: SearchResult['winner'] | null = null;
+  const options: SearchResult['options'] = [];
+  const seen = new Set<string>();
   for (const exotic of exoticOptions) {
     const combo = pools.map(({ slot, pool }) => {
       const allowed = pool.filter((item) => !isExoticWeapon(item) || item.id === exotic?.id);
       const item = poolPick(allowed, player);
       return { slot, item, buildable: item !== null && buildableNow(item, player) };
     });
-    const score = scoreLoadout(combo);
+    const score = scoreLoadout(combo, delta);
     if (best === null || compareLoadouts(score, best.score) > 0) best = { exotic, combo, score };
+
+    const equipped =
+      combo.map((entry) => entry.item).find((item) => item !== null && isExoticWeapon(item)) ?? null;
+    const signature = combo.map((entry) => entry.item?.id ?? '-').join('|');
+    if (!seen.has(signature)) {
+      seen.add(signature);
+      options.push({ equippedExoticId: equipped?.id ?? null, combo, score });
+    }
   }
-  const winner = best!;
+  options.sort((a, b) => {
+    const byScore = compareLoadouts(b.score, a.score);
+    if (byScore !== 0) return -byScore;
+    return 0;
+  });
+  return { winner: best!, options, pools };
+}
+
+/**
+ * The next-best LEGAL loadouts after the winner, each meaningfully different:
+ * a different exotic seat (or no exotic at all), never a one-slot shuffle of
+ * the same idea. Legal by construction, because they come out of the same
+ * one-exotic search the winner does.
+ */
+export interface LoadoutAlternative {
+  equippedExoticId: string | null;
+  slots: ComboSlot[];
+  score: LoadoutScore;
+}
+
+export function alternativeLoadouts(
+  activity: Activity,
+  player: PlayerData,
+  adjust?: EncounterAdjust,
+  count = 2
+): LoadoutAlternative[] {
+  const { winner, options } = searchCombinations(activity, player, adjust);
+  const winnerEquipped =
+    winner.combo.map((e) => e.item).find((item) => item !== null && isExoticWeapon(item))?.id ??
+    null;
+  const winnerSignature = winner.combo.map((e) => e.item?.id ?? '-').join('|');
+  const out: LoadoutAlternative[] = [];
+  const usedExotics = new Set<string>([winnerEquipped ?? 'none']);
+  for (const option of options) {
+    if (out.length >= count) break;
+    const signature = option.combo.map((e) => e.item?.id ?? '-').join('|');
+    if (signature === winnerSignature) continue;
+    const key = option.equippedExoticId ?? 'none';
+    if (usedExotics.has(key)) continue;
+    if (option.combo.every((e) => e.item === null)) continue;
+    usedExotics.add(key);
+    out.push({ equippedExoticId: option.equippedExoticId, slots: option.combo, score: option.score });
+  }
+  return out;
+}
+
+export function chooseWeaponSlots(
+  activity: Activity,
+  player: PlayerData,
+  withChampion: boolean,
+  adjust?: EncounterAdjust
+): SlotAnswer[] {
+  const { winner, pools } = searchCombinations(activity, player, adjust);
 
   // The exotic the winning combination actually equips. The allowed exotic
   // can go unused when a better non-exotic holds its slot, and a note must
@@ -386,17 +506,34 @@ export function chooseWeaponSlots(
     winner.combo.map((entry) => entry.item).find((item) => item !== null && isExoticWeapon(item)) ??
     null;
 
-  return pools.map(({ slot, pool }, index) => {
-    if (pool.length === 0) {
+  return pools.map(({ slot, pool, rawPool }, index) => {
+    if (rawPool.length === 0) {
       return {
         slot,
         pick: null,
         emptyReason: emptySlotReason(activity, slot),
         idealNote: null,
-        exclusivityNote: null
+        exclusivityNote: null,
+        encounterNote: null
       };
     }
     const chosen = winner.combo[index].item;
+    const encounterNote = adjust
+      ? encounterSlotNote(adjust, rawPool, chosen, winner.exotic, player)
+      : null;
+    if (pool.length === 0) {
+      // Every candidate for this slot is excluded by an encounter rule; the
+      // card says which rule emptied it instead of pretending the sheet had
+      // nothing.
+      return {
+        slot,
+        pick: null,
+        emptyReason: null,
+        idealNote: null,
+        exclusivityNote: null,
+        encounterNote
+      };
+    }
     // What this slot would say if Destiny allowed a second exotic. When the
     // rule changed the answer, the item that lost the seat is that exotic,
     // and the card says so instead of quietly showing the runner-up.
@@ -409,7 +546,8 @@ export function chooseWeaponSlots(
         pick: null,
         emptyReason: null,
         idealNote: null,
-        exclusivityNote: displaced ? exclusionLine(displaced, equipped!, null, slot, player) : null
+        exclusivityNote: displaced ? exclusionLine(displaced, equipped!, null, slot, player) : null,
+        encounterNote
       };
     }
 
@@ -429,9 +567,95 @@ export function chooseWeaponSlots(
       pick: toPick(chosen, player, withChampion),
       emptyReason: null,
       idealNote,
-      exclusivityNote: displaced ? exclusionLine(displaced, equipped!, chosen, slot, player) : null
+      exclusivityNote: displaced ? exclusionLine(displaced, equipped!, chosen, slot, player) : null,
+      encounterNote
     };
   });
+}
+
+/**
+ * The on-card words for what an encounter rule did to a slot: what would
+ * have led the slot without the rule, and what the rule did about it.
+ */
+function encounterSlotNote(
+  adjust: EncounterAdjust,
+  rawPool: CuratedItem[],
+  chosen: CuratedItem | null,
+  allowedExotic: CuratedItem | null,
+  player: PlayerData
+): string | null {
+  // An exclusion is absolute: an excluded item can never hold the slot under
+  // any exotic-seat decision, so the comparison for exclusions is against
+  // the fully unconstrained generic pick.
+  const rawUnconstrained = poolPick(rawPool, player);
+  if (rawUnconstrained && rawUnconstrained.id !== chosen?.id) {
+    const excludedTop = adjust.exclude(rawUnconstrained);
+    if (excludedTop) {
+      return (
+        rawUnconstrained.name +
+        ' is excluded here: ' +
+        excludedTop.text +
+        (chosen ? ' The slot goes to ' + chosen.name + ' instead.' : '') +
+        ' [rule: ' +
+        excludedTop.ruleId +
+        ']'
+      );
+    }
+  }
+
+  // Demotions are relative: compare under the same exotic seat decision, so
+  // the note isolates the encounter's effect from the one-exotic rule's.
+  const rawAllowed = rawPool.filter(
+    (item) => !isExoticWeapon(item) || item.id === allowedExotic?.id
+  );
+  const rawTop = poolPick(rawAllowed, player);
+  if (rawTop === null) return null;
+
+  if (chosen === null || rawTop.id !== chosen.id) {
+    const excluded = adjust.exclude(rawTop);
+    if (excluded) {
+      return (
+        rawTop.name +
+        ' is excluded here: ' +
+        excluded.text +
+        (chosen ? ' The slot goes to ' + chosen.name + ' instead.' : '') +
+        ' [rule: ' +
+        excluded.ruleId +
+        ']'
+      );
+    }
+    const demoted = adjust.note(rawTop);
+    if (demoted && adjust.rankDelta(rawTop) > 0) {
+      return (
+        rawTop.name +
+        ' is demoted here: ' +
+        demoted.text +
+        (chosen ? ' The slot goes to ' + chosen.name + ' instead.' : '') +
+        ' [rule: ' +
+        demoted.ruleId +
+        ']'
+      );
+    }
+    return null;
+  }
+
+  const reason = adjust.note(chosen);
+  if (!reason) return null;
+  const delta = adjust.rankDelta(chosen);
+  if (delta > 0) {
+    return (
+      chosen.name +
+      ' is demoted here (' +
+      reason.text +
+      ') but is still the best legal option you can field. [rule: ' +
+      reason.ruleId +
+      ']'
+    );
+  }
+  if (delta < 0) {
+    return chosen.name + ' is promoted here: ' + reason.text + ' [rule: ' + reason.ruleId + ']';
+  }
+  return null;
 }
 
 /**
@@ -557,10 +781,10 @@ export const WELL_GOLDEN_GUN_WARNING: Warning = {
 
 export const DIVINITY_PANTHEON_WARNING: Warning = {
   id: 'divinity-pantheon',
-  title: 'Divinity is disabled on Pantheon and Insurrection Prime',
+  title: 'Divinity does zero damage to Insurrection Prime',
   body:
-    'Since hotfix 9.7.0.3, Divinity is disabled entirely on Pantheon and against Insurrection Prime. This is hard-coded here on purpose; do not bring it to those fights.',
-  source: 'Bungie hotfix 9.7.0.3 notes',
+    'Since hotfix 9.7.0.3, Divinity deals ZERO damage to Insurrection Prime (including the Pantheon gauntlets that end there) and its cage does not damage him; Fallen Tech specifically blocks the weapon. That one encounter is the whole scope: Divinity works everywhere else. Whether the zero-damage cage still forms for teammates there is unconfirmed, so this page does not claim it either way.',
+  source: 'Bungie hotfix 9.7.0.3 notes; encounter research brief 2026-08-08',
 };
 
 export const TRACTOR_REFRESH_WARNING: Warning = {
@@ -766,7 +990,8 @@ const PVP_OUT_OF_SCOPE = {
 export function recommend(
   player: PlayerData,
   classType: GuardianClass,
-  activity: Activity
+  activity: Activity,
+  adjust?: EncounterAdjust
 ): Verdict {
   const classNotes = CLASS_NOTES.filter(
     (n) => n.classType === null || n.classType === classType
@@ -796,7 +1021,7 @@ export function recommend(
   }
 
   const withChampion = activity === 'master-champions';
-  const slots = chooseWeaponSlots(activity, player, withChampion);
+  const slots = chooseWeaponSlots(activity, player, withChampion, adjust);
   const armorAnswer = pickArmor(activity, classType, player);
   const superRec = superForClass(classType, armorAnswer.pick);
   const powerPickId = slots.find((s) => s.slot === 'power')?.pick?.id ?? null;

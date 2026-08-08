@@ -5,7 +5,8 @@
 
 Live: https://keivanmalhani.github.io/dps-maximizer/
 
-Sign in with Bungie, pick your class and what you are doing, and get the
+Sign in with Bungie, pick your class and what you are doing - a generic mode
+or a specific raid, dungeon or Pantheon encounter - and get the
 maximum-damage loadout you can build from what you actually own, the rotation
 it requires of you, and the single best thing to go unlock next.
 
@@ -82,14 +83,56 @@ Other honesty rules that shaped the code:
   effect is reported as unknown.
 - Add clear is where the sourced sheet is thinnest, and the page says so; the
   energy slot in that mode is honestly empty rather than padded.
-- PvP is out of scope in v1, and picking it says so instead of half-answering.
+- PvP is out of scope, and picking it says so instead of half-answering.
 - Whether Bait and Switch's activating shot itself benefits is contested in
   community testing, and the rotation card says exactly that.
-- Divinity is disabled entirely on Pantheon and against Insurrection Prime
-  since hotfix 9.7.0.3; that warning is hard-coded wherever Divinity is
-  recommended. Likewise the verified oddity that a Well of Radiance OVERRIDES
-  Radiant for Golden Gun appears exactly when Golden Gun is the recommended
-  super.
+- Divinity deals zero damage to Insurrection Prime since hotfix 9.7.0.3 (its
+  cage does not damage him; Fallen Tech blocks the weapon there), and it
+  works everywhere else - the 2026-08-08 encounter research corrected the
+  earlier broader claim, and the site now states the corrected scope. Whether
+  the cage still forms for teammates there is unconfirmed and said to be.
+  Likewise the verified oddity that a Well of Radiance OVERRIDES Radiant for
+  Golden Gun appears exactly when Golden Gun is the recommended super.
+
+## Encounters: the same honesty, one level deeper
+
+The activity picker now goes past the four generic modes: all 10 raids, all
+11 dungeons and the three permanent Pantheon 2.0 gauntlets, encounter by
+encounter, from `docs/encounter-research.md` (the sourced research brief that
+is the ONLY origin of encounter facts on the site). Every encounter page
+shows its damage profile - window seconds from the Aegis Bosses tab, range,
+movement, crit - and every special rule with its source and confidence code.
+
+Tiers-not-numbers still holds at encounter level, and matters more there. The
+brief records RULES (the Templar resists explosives outside its raised state;
+Atraks-1 is a proxy target where crits and debuffs are dead; Crota takes 35
+percent more from swords; Morgeth resists snipers; Oryx and the Witness break
+projectile tracking and tether), not per-encounter DPS figures - so the
+engine bends the same tiered pools by those rules and says which rule id did
+the bending on the card, instead of inventing encounter DPS numbers nobody
+published. Where the brief marks a claim contested (Atheon's 5x) the page
+renders "reported but unconfirmed"; where it lists a gap (Pantheon phase
+lengths, Epic Desert Perpetual mechanics) the page says unknown; where no
+per-encounter loadout consensus exists, the page says generic boss DPS
+reasoning applies rather than dressing the generic answer up as
+encounter-specific wisdom.
+
+The answer also grew depth:
+
+- Loadout A is the answer; Options B and C are the next-best LEGAL builds
+  that are meaningfully different (a different exotic seat or none at all),
+  out of the same one-exotic search, never a one-slot reshuffle.
+- "Everything you own that fits": the full-arsenal table (924 weapons baked
+  from the manifest into `src/data/arsenal.json`) filtered to what you own,
+  ranked by the sourced archetype order for the encounter's window style,
+  with your actual damage-perk rolls read from item sockets - "Your roll:
+  Envious Assassin + Bait and Switch" or the honest wishlist when your copy
+  lacks one. Archetypes past the sourced order are listed, not ranked, and
+  say so. The arsenal JSON is ~505 KB, so it loads as its own lazy chunk on
+  first use; a test fails the build if anything imports it statically.
+- Deep links: `?activity=vault-of-glass&encounter=templar&class=titan`
+  restores the exact page, so an encounter loadout is a URL you can hand to
+  your fireteam.
 
 ## How it reads your account
 
@@ -182,6 +225,7 @@ node scripts/render-og.mjs
 ```
 src/
   data/tiers.ts        the curated tier dataset, quotes and sources (pure data)
+  data/encounters.ts   the encounter database, transcribed from docs/encounter-research.md
   data/rotations.ts    rotation knowledge as data
   data/buffs.ts        the four buckets, oddities, myths
   data/champions.ts    Anti-Champion 2.0 frame mapping
@@ -189,7 +233,11 @@ src/
   data/armor-stats.ts  Armor 3.0 damage stat ceilings
   data/items.json      baked manifest facts, generated, verified, committed
   data/items.ts        typed access to the bake
-  recommend.ts         the engine (pure)
+  data/arsenal.json    the full weapon arsenal bake, lazy-loaded, committed
+  recommend.ts         the engine (pure), one-exotic search + encounter adjustments
+  encounter.ts         encounter rules compiled into engine adjustments (pure)
+  arsenal.ts           lazy arsenal door + roll detection + table ranking (pure)
+  url-state.ts         deep-link (de)serialization (pure)
   ownership.ts         GetProfile response to ownership model (pure)
   card.ts              the 1200x630 share card drawing (pure)
   signin.ts            the session as UI state and error copy (pure)
@@ -199,8 +247,10 @@ src/
   ui/sections.ts       markup as pure string functions
   ui/app.ts            the shell
   main.ts              entry point
+docs/encounter-research.md  the sourced encounter brief; the only origin of encounter facts
 fixtures/demo.ts       the invented demo vault, fed through the real parser
 scripts/build-data.mjs the manifest bake, loud on any mismatch
+scripts/build-arsenal.mjs the arsenal bake
 scripts/render-og.mjs  the OG card render
 tests/                 vitest suite
 ```

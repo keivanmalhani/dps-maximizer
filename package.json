@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "data": "node scripts/build-data.mjs",
+    "data:arsenal": "node scripts/build-arsenal.mjs",
     "ascii": "LC_ALL=C grep -rnI '[^\t -~]' . --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git; test $? -eq 1"
   },
   "devDependencies": {

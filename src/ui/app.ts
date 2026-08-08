@@ -9,25 +9,48 @@
 // are authenticated components: a Bungie Name lookup could never see them,
 // so offering one would be offering a worse answer that looks like the same
 // answer. Signed out, the demo is the product tour.
+//
+// The run target is either a generic mode (the four sourced modes plus the
+// PvP refusal) or a specific encounter out of src/data/encounters.ts. The
+// target and class live in the URL query string, so any encounter loadout
+// is a link somebody can share; a bad link falls back to the default demo
+// answer rather than an empty page.
 
+import {
+  DEFAULT_ARSENAL_FILTERS,
+  loadArsenal,
+  ownedArsenal,
+  rankArsenal,
+  type ArsenalData,
+  type ArsenalFilters
+} from '../arsenal';
 import { getSession, minutesLeft, signIn, signOut, signedIn } from '../auth';
 import { formatBungieName, getProfile } from '../bungie';
 import { buildDemoProfile, DEMO_FLAG_LINE, DEMO_PLAYER } from '../../fixtures/demo';
+import { findEncounter, type Encounter, ACTIVITY_BY_ID, firstDamageEncounter } from '../data/encounters';
+import { encounterMode, recommendEncounter, type EncounterVerdict } from '../encounter';
 import { escapeText } from '../format';
-import { parseProfile } from '../ownership';
-import { recommend, type Verdict } from '../recommend';
+import { parseProfile, type ProfileResponse } from '../ownership';
+import { alternativeLoadouts, recommend, type Verdict } from '../recommend';
 import { failureText, getOwnPlayer, isSessionExpiry, signInView } from '../signin';
 import type { SignInView } from '../signin';
 import type { Activity, GuardianClass, PlayerData } from '../types';
-import { resultPage, runbar, type PageModel } from './sections';
+import { ACTIVITY_LABELS } from '../types';
+import { parseUrlState, serializeUrlState, type RunTarget } from '../url-state';
+import { arsenalTableHtml, resultPage, runbar, type PageModel } from './sections';
 
 export interface AppState {
   source: 'demo' | 'live';
   playerName: string;
   flagLine: string;
   data: PlayerData;
+  /** The raw response the data came from; the arsenal table reads it too. */
+  profile: ProfileResponse;
   classType: GuardianClass;
+  /** The last generic mode picked, kept so leaving an encounter restores it. */
   activity: Activity;
+  target: RunTarget;
+  arsenalFilters: ArsenalFilters;
 }
 
 export function defaultClass(data: PlayerData): GuardianClass {
@@ -49,20 +72,31 @@ function el<T extends HTMLElement>(id: string): T | null {
 export class App {
   private root: HTMLElement;
   private state: AppState | null = null;
+  private arsenal: ArsenalData | null = null;
+  private arsenalLoading = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
   }
 
   start(): void {
-    const data = parseProfile(buildDemoProfile());
+    const url = parseUrlState(typeof location !== 'undefined' ? location.search : '');
+    const profile = buildDemoProfile();
+    const data = parseProfile(profile);
+    const urlClass = url.classType;
     this.state = {
       source: 'demo',
       playerName: formatBungieName(DEMO_PLAYER),
       flagLine: DEMO_FLAG_LINE,
       data,
-      classType: defaultClass(data),
-      activity: 'boss-burst'
+      profile,
+      classType:
+        urlClass !== null && availableClasses(data).includes(urlClass)
+          ? urlClass
+          : defaultClass(data),
+      activity: url.target.kind === 'mode' ? url.target.activity : 'boss-burst',
+      target: url.target,
+      arsenalFilters: { ...DEFAULT_ARSENAL_FILTERS }
     };
     this.render();
     if (signedIn()) el<HTMLButtonElement>('mine')?.focus();
@@ -91,21 +125,59 @@ export class App {
       classType: state.classType,
       activity: state.activity,
       availableClasses: availableClasses(state.data),
-      character: state.data.characters.find((c) => c.classType === state.classType) ?? null
+      character: state.data.characters.find((c) => c.classType === state.classType) ?? null,
+      target: state.target
     };
   }
 
-  private verdict(state: AppState): Verdict {
-    return recommend(state.data, state.classType, state.activity);
+  private currentEncounter(state: AppState): EncounterVerdict | null {
+    if (state.target.kind !== 'encounter') return null;
+    const hit = findEncounter(state.target.activityId, state.target.encounterId);
+    if (!hit) return null;
+    return recommendEncounter(state.data, state.classType, hit.activity, hit.encounter);
   }
 
   private render(): void {
     const state = this.state;
     if (!state) return;
     const model = this.pageModel(state);
-    this.root.innerHTML =
-      this.masthead() + resultPage(model, this.verdict(state), this.account());
+
+    let html: string;
+    let autoArsenal = false;
+    const ev = this.currentEncounter(state);
+    if (ev) {
+      // ev.verdict is null only for no-DPS encounters, where resultPage
+      // renders the honest empty state and never touches the verdict.
+      const verdict = ev.verdict ?? recommend(state.data, state.classType, 'boss-burst');
+      autoArsenal = ev.noDps === null;
+      html = resultPage(model, verdict, this.account(), {
+        encounter: ev,
+        arsenalAuto: autoArsenal
+      });
+    } else {
+      const activity = state.target.kind === 'mode' ? state.target.activity : 'boss-burst';
+      const verdict: Verdict = recommend(state.data, state.classType, activity);
+      const alternatives =
+        activity === 'pvp' ? [] : alternativeLoadouts(activity, state.data);
+      html = resultPage(model, verdict, this.account(), { alternatives });
+    }
+
+    this.root.innerHTML = this.masthead() + html;
     this.bind();
+    this.syncUrl();
+    if (autoArsenal) void this.ensureArsenal();
+  }
+
+  /** Keep the URL shareable: target and class, nothing else. */
+  private syncUrl(): void {
+    const state = this.state;
+    if (!state || typeof history === 'undefined' || typeof location === 'undefined') return;
+    try {
+      history.replaceState(null, '', location.pathname + serializeUrlState(state.target, state.classType));
+    } catch {
+      // A file:// or sandboxed context that refuses replaceState is not an
+      // error worth surfacing; the page still works, only the link is plain.
+    }
   }
 
   /**
@@ -152,6 +224,7 @@ export class App {
       const target = event.target as HTMLElement;
       const classPick = target.getAttribute('data-class');
       const activityPick = target.getAttribute('data-activity');
+      const encounterPick = target.getAttribute('data-encounter');
       const state = this.state;
       if (!state) return;
       if (classPick !== null) {
@@ -159,9 +232,122 @@ export class App {
         this.render();
       } else if (activityPick !== null) {
         state.activity = activityPick as Activity;
+        state.target = { kind: 'mode', activity: activityPick as Activity };
+        this.render();
+      } else if (encounterPick !== null && state.target.kind === 'encounter') {
+        state.target = { kind: 'encounter', activityId: state.target.activityId, encounterId: encounterPick };
         this.render();
       }
     });
+    el<HTMLSelectElement>('activity-select')?.addEventListener('change', (event) => {
+      const state = this.state;
+      if (!state) return;
+      const value = (event.target as HTMLSelectElement).value;
+      if (value === '') {
+        state.target = { kind: 'mode', activity: state.activity };
+      } else {
+        const activity = ACTIVITY_BY_ID.get(value);
+        if (!activity) return;
+        state.target = {
+          kind: 'encounter',
+          activityId: activity.id,
+          encounterId: firstDamageEncounter(activity).id
+        };
+      }
+      this.render();
+    });
+
+    const arsenalHost = el<HTMLElement>('arsenal');
+    arsenalHost?.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      const state = this.state;
+      if (!state) return;
+      if (target.id === 'arsenal-load') {
+        void this.ensureArsenal();
+        return;
+      }
+      const slotPick = target.getAttribute('data-arsslot');
+      if (slotPick !== null) {
+        state.arsenalFilters.slot = slotPick as ArsenalFilters['slot'];
+        this.paintArsenal();
+        return;
+      }
+      if (target.getAttribute('data-arsroll') !== null) {
+        state.arsenalFilters.damageRollOnly = !state.arsenalFilters.damageRollOnly;
+        this.paintArsenal();
+      }
+    });
+    arsenalHost?.addEventListener('change', (event) => {
+      const target = event.target as HTMLElement;
+      const state = this.state;
+      if (!state) return;
+      if (target.id === 'ars-archetype') {
+        state.arsenalFilters.archetype = (target as HTMLSelectElement).value;
+        this.paintArsenal();
+      }
+    });
+  }
+
+  // ----------------------------------------------------------- the arsenal
+
+  /** Load the lazy chunk once, then paint. Failure is stated, not hidden. */
+  private async ensureArsenal(): Promise<void> {
+    if (this.arsenal) {
+      this.paintArsenal();
+      return;
+    }
+    if (this.arsenalLoading) return;
+    this.arsenalLoading = true;
+    const status = el<HTMLElement>('arsenal-status');
+    if (status) status.textContent = 'Reading your full arsenal (loads separately so the page stays fast)...';
+    try {
+      this.arsenal = await loadArsenal();
+      this.paintArsenal();
+    } catch (error) {
+      const table = el<HTMLElement>('arsenal-table');
+      if (table) {
+        table.innerHTML =
+          `<p class="prose">The arsenal chunk failed to load (` +
+          escapeText(error instanceof Error ? error.message : String(error)) +
+          `). The answer above is unaffected; reload to retry.</p>`;
+      }
+    } finally {
+      this.arsenalLoading = false;
+    }
+  }
+
+  private paintArsenal(): void {
+    const state = this.state;
+    const arsenal = this.arsenal;
+    const table = el<HTMLElement>('arsenal-table');
+    if (!state || !arsenal || !table) return;
+
+    let mode: Activity = 'boss-burst';
+    let encounter: Encounter | null = null;
+    let label = ACTIVITY_LABELS['boss-burst'];
+    if (state.target.kind === 'encounter') {
+      const hit = findEncounter(state.target.activityId, state.target.encounterId);
+      if (hit && hit.encounter.type !== 'none') {
+        encounter = hit.encounter;
+        mode = encounterMode(hit.encounter);
+        label = hit.encounter.name + ' (' + hit.activity.name + ')';
+      }
+    } else if (state.target.kind === 'mode' && state.target.activity !== 'pvp') {
+      mode = state.target.activity === 'boss-sustained' ? 'boss-sustained' : 'boss-burst';
+      label = ACTIVITY_LABELS[state.target.activity];
+    }
+
+    const rows = ownedArsenal(arsenal, state.profile);
+    const ranked = rankArsenal(rows, mode, encounter);
+    const iconPrefix = String(arsenal.meta.iconPrefix ?? '');
+    table.innerHTML = arsenalTableHtml(ranked, state.arsenalFilters, iconPrefix, label);
+    const status = el<HTMLElement>('arsenal-status');
+    if (status) {
+      status.textContent =
+        'Your owned arsenal, read from the same profile as the answer above: ' +
+        rows.length +
+        ' weapons the bake knows about.';
+    }
   }
 
   // ------------------------------------------------------ status in place
@@ -230,10 +416,13 @@ export class App {
         playerName: formatBungieName(player),
         flagLine: '',
         data,
+        profile,
         classType: availableClasses(data).includes(previous?.classType ?? 0)
           ? (previous?.classType ?? defaultClass(data))
           : defaultClass(data),
-        activity: previous?.activity ?? 'boss-burst'
+        activity: previous?.activity ?? 'boss-burst',
+        target: previous?.target ?? { kind: 'mode', activity: 'boss-burst' },
+        arsenalFilters: previous?.arsenalFilters ?? { ...DEFAULT_ARSENAL_FILTERS }
       };
       this.render();
       window.scrollTo({ top: 0, behavior: 'auto' });
