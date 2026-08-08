@@ -64,6 +64,21 @@ function tierClass(item: ArmoryItem): string {
  * not decoration: a grid of icons is unusable for anyone who cannot tell two
  * hand cannons apart at 42 pixels, and the accessible name has to say what
  * the picture says.
+ *
+ * NO loading="lazy" HERE, and it is not an oversight. Measured on the live
+ * site 2026-08-08: sixteen tiles sat inside the viewport with complete=false
+ * and currentSrc empty, forever. Flipping ONE of those same elements to
+ * loading="eager" in the console loaded it immediately at 96 pixels while
+ * the untouched control beside it stayed pending. The grid's tiles are
+ * inserted by innerHTML into a CSS grid whose tracks size afterwards, so
+ * Chrome's first layout pass sees them as nowhere near the viewport and,
+ * with no scroll or resize to follow, never reconsiders. The page rendered
+ * perfectly and every icon was blank, which is mistakes rule 47 exactly.
+ *
+ * What bounds the cost instead is CELL_PREVIEW: a cell draws nine items and
+ * offers the rest, and only one cell expands at a time. The tile count on
+ * screen was always capped by that, which is what lazy loading was there to
+ * do and was not doing.
  */
 export function tile(item: ArmoryItem, data: ArmoryData, selected: boolean): string {
   const name = itemName(item);
@@ -83,7 +98,7 @@ export function tile(item: ArmoryItem, data: ArmoryData, selected: boolean): str
     `${selected ? ' tile--selected' : ''}" data-instance="${escapeText(item.instanceId ?? '')}" ` +
     `title="${escapeText(label)}" aria-label="${escapeText(label)}">` +
     (icon
-      ? `<img class="tile__img" src="${escapeText(icon)}" alt="" loading="lazy" decoding="async" width="48" height="48" />`
+      ? `<img class="tile__img" src="${escapeText(icon)}" alt="" decoding="async" width="48" height="48" />`
       : `<span class="tile__img tile__img--none" aria-hidden="true"></span>`) +
     (power ? `<span class="tile__power">${escapeText(power)}</span>` : '') +
     (badges.length ? `<span class="tile__badges">${badges.join('')}</span>` : '') +

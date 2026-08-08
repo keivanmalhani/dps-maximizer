@@ -78,6 +78,17 @@ describe('tile', () => {
     expect(html).toContain('https://www.bungie.net/icons/sun.png');
   });
 
+  it('never lazy loads, because on the live grid lazy never fires', () => {
+    // Regression guard for a defect that shipped looking correct. Chrome
+    // deferred every tile image forever, so the grid rendered as a wall of
+    // empty squares while the page itself was fine. The cap on how many
+    // tiles exist is CELL_PREVIEW, not the loading attribute.
+    const armory = buildArmory(profile(), data);
+    const html = tile(armory.byInstance.get('i-sun')!, data, false);
+    expect(html).not.toContain('loading=');
+    expect(html).toContain('decoding="async"');
+  });
+
   it('marks the selected tile so a keyboard user can see where they are', () => {
     const armory = buildArmory(profile(), data);
     expect(tile(armory.byInstance.get('i-sun')!, data, true)).toContain('tile--selected');
