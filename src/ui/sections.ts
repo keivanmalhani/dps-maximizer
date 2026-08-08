@@ -179,8 +179,17 @@ export function pickerSection(model: PageModel): string {
 
 // ------------------------------------------------------------------- answer
 
+const TIER_TONE: Record<string, string> = {
+  'Tier 1': ' tier--one',
+  'Tier 2': ' tier--two',
+  'Tier 3': ' tier--three',
+  'Tier 4': ' tier--four'
+};
+
 function tierChip(label: string): string {
-  const tone = label === 'Tier 1' ? ' tier--one' : '';
+  // Every tier gets its own weight, not just tier 1. A badge scale that only
+  // marks the top makes tier 2 and tier 4 look like the same thing.
+  const tone = TIER_TONE[label] ?? '';
   return `<span class="tier${tone}">${escapeText(label)}</span>`;
 }
 
@@ -256,14 +265,29 @@ export function answerSection(verdict: Verdict, encounter?: EncounterVerdict): s
       const encounterNote = slot.encounterNote
         ? `<p class="pick__ideal pick__encounter">${escapeText(slot.encounterNote)}</p>`
         : '';
-      if (!slot.pick) return emptySlotCard(slot) + encounterNote;
+      // Why the sheet's leader is not here, and why this slot never changes.
+      // Both are the honest answer to "is this thing just stuck?".
+      const rollNote = slot.rollNote
+        ? `<p class="pick__ideal pick__roll">${escapeText(slot.rollNote)}</p>`
+        : '';
+      const poolNote = slot.poolNote
+        ? `<p class="pick__ideal pick__pool">${escapeText(slot.poolNote)}</p>`
+        : '';
+      if (!slot.pick) return emptySlotCard(slot) + encounterNote + rollNote + poolNote;
       const exclusive = slot.exclusivityNote
         ? `<p class="pick__ideal pick__exclusive">${escapeText(slot.exclusivityNote)}</p>`
         : '';
       const ideal = slot.idealNote
         ? `<p class="pick__ideal">${escapeText(slot.idealNote)}</p>`
         : '';
-      return pickCard(slot.pick, slot.pick.slotName) + encounterNote + exclusive + ideal;
+      return (
+        pickCard(slot.pick, slot.pick.slotName) +
+        encounterNote +
+        rollNote +
+        exclusive +
+        ideal +
+        poolNote
+      );
     })
     .map((html) => `<div class="answer__cell">${html}</div>`)
     .join('');
@@ -352,8 +376,10 @@ export function answerSection(verdict: Verdict, encounter?: EncounterVerdict): s
     `<section class="section answer" id="answer">` +
     `<div class="eyebrow">The answer</div>` +
     `<h1 class="answer__headline">${escapeText(verdict.headline)}</h1>` +
-    `<p class="answer__subline">${escapeText(verdict.subline)}</p>` +
+    // The cards come before the paragraph about the cards. This page exists
+    // to answer a question; the caveats read better underneath the answer.
     `<div class="answer__grid">${slotCards}${armor}${superCard}</div>` +
+    `<p class="answer__subline">${escapeText(verdict.subline)}</p>` +
     fireteam +
     champions +
     encounterCards +

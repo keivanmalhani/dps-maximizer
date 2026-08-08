@@ -76,6 +76,19 @@ export interface SlotAnswer {
    * from, because encounter adjustments are traceable or they are folklore.
    */
   encounterNote: string | null;
+  /**
+   * Set when the slot's leading weapon lost the slot because none of the
+   * player's copies has the roll its tier is for. Names the roll and the
+   * source, because a demotion the player cannot audit is just an opinion.
+   */
+  rollNote: string | null;
+  /**
+   * Set when the sourced pools leave this slot exactly one candidate. The
+   * honest reason an answer does not change between encounters is usually
+   * that the dataset had one thing to say, and the card says so rather than
+   * letting a constant pick read as a broken engine.
+   */
+  poolNote: string | null;
 }
 
 export interface RotationPlan {
@@ -271,6 +284,30 @@ export function isExoticWeapon(item: CuratedItem): boolean {
 export const UNBUILDABLE_PENALTY = 4;
 export const EMPTY_SLOT_QUALITY = 9;
 
+/**
+ * How far a missing wanted roll drops an item's rank. Several entries are
+ * tiered FOR a specific roll ("the tier is for the Perfect Fifth roll
+ * specifically"), and the card has always said so in words while the engine
+ * ranked on the bare tier anyway. This is the engine acting on its own
+ * sentence.
+ *
+ * 1.5 is chosen so a tier 1 without its roll (1 + 1.5 = 2.5) falls below an
+ * intact tier 2 and stays above an intact tier 3: the roll is worth about a
+ * tier and a half. It is smaller than UNBUILDABLE_PENALTY, so a weapon you
+ * own with the wrong roll still beats one you cannot build at all.
+ *
+ * Only 'missing-roll' is penalised. 'unknown' is left alone on purpose: an
+ * unreadable socket is not evidence against a weapon, and this site does not
+ * turn a gap in the data into a demotion.
+ */
+export const MISSING_ROLL_PENALTY = 1.5;
+
+/** The rank penalty this player's copies earn for `item`, 0 when none. */
+export function missingRollPenalty(item: CuratedItem, player: PlayerData): number {
+  if (!item.wantedRoll) return 0;
+  return rollState(item.id, player) === 'missing-roll' ? MISSING_ROLL_PENALTY : 0;
+}
+
 export function slotQuality(item: CuratedItem | null, buildable: boolean): number {
   if (item === null) return EMPTY_SLOT_QUALITY;
   return tierRank(item) + (buildable ? 0 : UNBUILDABLE_PENALTY);
@@ -410,13 +447,15 @@ function searchCombinations(
   player: PlayerData,
   adjust?: EncounterAdjust
 ): SearchResult {
-  const delta = adjust ? adjust.rankDelta : undefined;
+  // Two things bend the ranking and they compose: what the encounter does to
+  // a weapon, and what this player's own copies are missing. An encounter can
+  // demote a weapon that is already demoted for lacking its roll.
+  const delta = (item: CuratedItem) =>
+    (adjust ? adjust.rankDelta(item) : 0) + missingRollPenalty(item, player);
   const pools = WEAPON_SLOTS.map((slot) => {
     const rawPool = weaponCandidates(activity, slot);
-    const pool = adjust
-      ? orderCandidates(rawPool.filter((item) => adjust.exclude(item) === null), delta)
-      : rawPool;
-    return { slot, pool, rawPool };
+    const allowed = adjust ? rawPool.filter((item) => adjust.exclude(item) === null) : rawPool;
+    return { slot, pool: orderCandidates(allowed, delta), rawPool };
   });
 
   const exoticOptions: Array<CuratedItem | null> = orderCandidates(
@@ -491,6 +530,49 @@ export function alternativeLoadouts(
   return out;
 }
 
+/**
+ * The words for a slot whose leading weapon lost it to a missing roll. The
+ * comparison is against the encounter's own ranking, so an encounter
+ * demotion never gets reported as a roll problem.
+ */
+function rollDemotionNote(
+  pool: CuratedItem[],
+  chosen: CuratedItem | null,
+  slot: WeaponSlot,
+  player: PlayerData,
+  encounterDelta?: (item: CuratedItem) => number
+): string | null {
+  const sheetTop = poolPick(orderCandidates(pool, encounterDelta), player);
+  if (!sheetTop || sheetTop.id === chosen?.id) return null;
+  if (missingRollPenalty(sheetTop, player) === 0) return null;
+  const roll = sheetTop.wantedRoll!;
+  const landing = chosen
+    ? 'so the slot goes to ' + chosen.name + ' (' + chosen.tierLabel + ') instead.'
+    : 'so this slot has no ranked pick left.';
+  return (
+    sheetTop.name +
+    ' leads this ' +
+    slot +
+    ' slot on the sheet, but the tier is for a specific roll and none of your copies has it (' +
+    roll.note +
+    '), ' +
+    landing +
+    ' Source: ' +
+    roll.source +
+    '.'
+  );
+}
+
+/** The words for a slot the sourced pools leave with a single candidate. */
+function poolSizeNote(pool: CuratedItem[], slot: WeaponSlot): string | null {
+  if (pool.length !== 1) return null;
+  return (
+    'The sourced pools tier exactly one ' +
+    slot +
+    ' weapon for this kind of damage window, so this pick does not change from encounter to encounter. That is the size of the dataset, not a preference.'
+  );
+}
+
 export function chooseWeaponSlots(
   activity: Activity,
   player: PlayerData,
@@ -498,6 +580,9 @@ export function chooseWeaponSlots(
   adjust?: EncounterAdjust
 ): SlotAnswer[] {
   const { winner, pools } = searchCombinations(activity, player, adjust);
+  // The encounter's own ranking, with the player's rolls left out of it, so
+  // a roll demotion can be told apart from an encounter demotion.
+  const encounterDelta = adjust ? adjust.rankDelta : undefined;
 
   // The exotic the winning combination actually equips. The allowed exotic
   // can go unused when a better non-exotic holds its slot, and a note must
@@ -514,7 +599,9 @@ export function chooseWeaponSlots(
         emptyReason: emptySlotReason(activity, slot),
         idealNote: null,
         exclusivityNote: null,
-        encounterNote: null
+        encounterNote: null,
+        rollNote: null,
+        poolNote: null
       };
     }
     const chosen = winner.combo[index].item;
@@ -531,14 +618,20 @@ export function chooseWeaponSlots(
         emptyReason: null,
         idealNote: null,
         exclusivityNote: null,
-        encounterNote
+        encounterNote,
+        rollNote: null,
+        poolNote: null
       };
     }
+
+    const poolNote = poolSizeNote(pool, slot);
     // What this slot would say if Destiny allowed a second exotic. When the
     // rule changed the answer, the item that lost the seat is that exotic,
     // and the card says so instead of quietly showing the runner-up.
     const unconstrained = poolPick(pool, player)!;
     const displaced = chosen?.id !== unconstrained.id && equipped !== null ? unconstrained : null;
+
+    const rollNote = rollDemotionNote(pool, chosen, slot, player, encounterDelta);
 
     if (chosen === null) {
       return {
@@ -547,7 +640,9 @@ export function chooseWeaponSlots(
         emptyReason: null,
         idealNote: null,
         exclusivityNote: displaced ? exclusionLine(displaced, equipped!, null, slot, player) : null,
-        encounterNote
+        encounterNote,
+        rollNote,
+        poolNote
       };
     }
 
@@ -568,7 +663,9 @@ export function chooseWeaponSlots(
       emptyReason: null,
       idealNote,
       exclusivityNote: displaced ? exclusionLine(displaced, equipped!, chosen, slot, player) : null,
-      encounterNote
+      encounterNote,
+      rollNote,
+      poolNote
     };
   });
 }

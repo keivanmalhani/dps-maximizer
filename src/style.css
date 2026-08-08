@@ -5,7 +5,11 @@
 :root {
   --ink: #0a0b0e;
   --panel: #101217;
+  /* One step of lift above --panel, so a card reads as an object sitting on
+     the page instead of a very slightly different rectangle of it. */
+  --panel-lift: #171b23;
   --line: #1c2028;
+  --line-hi: #2a313d;
   --text: #e9e6df;
   --muted: #8b909b;
   --faint: #5a606c;
@@ -15,7 +19,7 @@
 
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --gutter: 32px;
-  --rhythm: 68px;
+  --rhythm: 60px;
 }
 
 *,
@@ -147,12 +151,14 @@ input:focus-visible {
 
 /* ------------------------------------------------------------------ runbar */
 
+/* The sign-in bar is chrome, not content: one slim line, aligned, so it
+   costs the answer as little vertical space as it can. */
 .runbar {
-  padding: 24px 0 26px;
+  padding: 14px 0 15px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
-  gap: 22px 44px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 32px;
+  align-items: center;
   border-bottom: 1px solid var(--line);
 }
 
@@ -174,17 +180,18 @@ input:focus-visible {
 }
 
 .runbar__note {
-  margin-top: 12px;
-  font-size: 14px;
-  line-height: 1.55;
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--faint);
-  max-width: 52ch;
+  max-width: 64ch;
 }
 
 .runbar__signin {
   display: grid;
-  gap: 10px;
-  justify-items: start;
+  gap: 5px;
+  justify-items: end;
+  text-align: right;
 }
 
 .runbar__actions {
@@ -194,10 +201,10 @@ input:focus-visible {
 }
 
 .runbar__session {
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.45;
   color: var(--faint);
-  max-width: 52ch;
+  max-width: 46ch;
 }
 
 .runbar #runbar-status:empty {
@@ -249,9 +256,9 @@ input:focus-visible {
 /* ------------------------------------------------------------------ picker */
 
 .picker {
-  padding: 20px 0;
+  padding: 14px 0 16px;
   display: grid;
-  gap: 12px;
+  gap: 9px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -275,13 +282,13 @@ input:focus-visible {
 .chip {
   appearance: none;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--muted);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.016);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 7px 16px;
+  padding: 6px 14px;
   cursor: pointer;
   transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
 }
@@ -361,38 +368,67 @@ input:focus-visible {
 /* ------------------------------------------------------------------ answer */
 
 .answer {
-  padding-top: clamp(28px, 3.4vw, 44px);
+  padding-top: clamp(20px, 2.4vw, 30px);
 }
 
+/* The old headline ran to 54px over 24ch, which is three lines at desktop
+   width and pushes the loadout off the first screen. Two lines, always. */
 .answer__headline {
-  margin-top: 14px;
-  font-size: clamp(30px, 5vw, 54px);
-  line-height: 1.04;
+  margin-top: 9px;
+  font-size: clamp(25px, 3.1vw, 37px);
+  line-height: 1.1;
   font-weight: 700;
-  letter-spacing: -0.03em;
-  max-width: 24ch;
+  letter-spacing: -0.024em;
+  max-width: 36ch;
+  text-wrap: balance;
 }
 
 .answer__subline {
-  margin-top: 16px;
-  color: var(--muted);
-  max-width: 74ch;
-  font-size: 15px;
+  margin-top: 20px;
+  color: var(--faint);
+  max-width: 82ch;
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
+/* Real cards with real gaps, not table cells sharing hairlines. An
+   incomplete last row now reads as space rather than an orphan block of
+   border colour. */
 .answer__grid {
-  margin-top: 30px;
+  margin-top: 22px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(298px, 1fr));
+  gap: 13px;
+  /* Cards size to their own content. Stretching every card to the tallest
+     one left 400px of dead space under the short ones. */
+  align-items: start;
 }
 
 .answer__cell {
-  background: var(--panel);
-  padding: 20px 22px 22px;
+  position: relative;
+  background: linear-gradient(177deg, var(--panel-lift), var(--panel) 58%);
+  border: 1px solid var(--line-hi);
+  border-radius: 4px;
+  padding: 17px 19px 19px 21px;
   min-width: 0;
+  overflow: hidden;
+}
+
+/* A status rail, not decoration: steel when the pick is in your vault,
+   ember when it is a target you cannot build yet. */
+.answer__cell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--line-hi), rgba(42, 49, 61, 0));
+}
+
+.answer__cell:has(.pick--missing)::before,
+.answer__cell:has(.pick--empty)::before {
+  background: linear-gradient(180deg, var(--accent), rgba(226, 89, 60, 0));
 }
 
 .pick__slot {
@@ -404,25 +440,27 @@ input:focus-visible {
 }
 
 .pick__head {
-  margin-top: 12px;
+  margin-top: 11px;
   display: flex;
-  gap: 12px;
+  gap: 13px;
   align-items: center;
 }
 
 .pick__icon {
-  width: 48px;
-  height: 48px;
+  width: 54px;
+  height: 54px;
   flex: none;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-hi);
+  border-radius: 3px;
   background: var(--quiet);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .pick__name {
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 650;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
+  letter-spacing: -0.016em;
+  line-height: 1.2;
 }
 
 .pick__name a {
@@ -444,34 +482,61 @@ input:focus-visible {
   flex-wrap: wrap;
 }
 
+/* A rank badge with an actual scale. One accent hue, four luminance steps:
+   tier 1 is filled, tier 2 is outlined in the accent, tier 3 and 4 recede
+   into the neutrals. Tier 2 and tier 4 used to render identically. */
 .tier {
   display: inline-block;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
-  border: 1px solid var(--line);
+  color: var(--faint);
+  background: rgba(255, 255, 255, 0.022);
+  border: 1px solid var(--line-hi);
   border-radius: 2px;
   padding: 2px 7px 1px;
   white-space: nowrap;
 }
 
 .tier--one {
-  color: var(--accent);
-  border-color: rgba(226, 89, 60, 0.5);
+  color: #170703;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
+.tier--two {
+  color: var(--accent);
+  background: rgba(226, 89, 60, 0.09);
+  border-color: rgba(226, 89, 60, 0.42);
+}
+
+.tier--three {
+  color: var(--muted);
+}
+
+.tier--four {
+  color: var(--faint);
+  background: transparent;
+  border-color: var(--line);
+}
+
+/* The sheet's own words, set apart from the site's words by a rule rather
+   than by another colour. */
 .pick__reason {
-  margin-top: 12px;
+  margin-top: 14px;
+  padding-left: 11px;
+  border-left: 2px solid var(--line-hi);
   font-size: 14.5px;
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--text);
 }
 
 .pick__own {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
   color: var(--muted);
 }
 
@@ -480,8 +545,9 @@ input:focus-visible {
 }
 
 .pick__detail {
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
   color: var(--faint);
 }
 
@@ -489,11 +555,17 @@ input:focus-visible {
   color: var(--muted);
 }
 
+/* Reserved for a real gap: something you cannot build, or a slot the
+   one-exotic rule took away. Explanations do not get to use this colour.
+   The note carries the ember on its rule rather than on every word, because
+   two stacked all-ember paragraphs read as an error state. */
 .pick__ideal {
-  margin-top: 10px;
-  font-size: 13px;
+  margin-top: 11px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(226, 89, 60, 0.45);
+  font-size: 12.5px;
   line-height: 1.5;
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .pick--empty .pick__reason {
@@ -505,6 +577,7 @@ input:focus-visible {
 .pick__exclusive,
 .pick--empty .pick__exclusive {
   color: var(--accent);
+  border-left-color: var(--accent);
 }
 
 .pick--super .pick__name {
@@ -837,8 +910,19 @@ input:focus-visible {
 
   .runbar {
     grid-template-columns: 1fr;
-    gap: 18px;
-    padding: 22px 0 24px;
+    gap: 10px;
+    padding: 14px 0 15px;
+  }
+
+  /* The right-alignment is a desktop move: on one column it reads as a
+     stray block floating away from everything else. */
+  .runbar__signin {
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .runbar__session {
+    max-width: none;
   }
 
   .picker__label {
@@ -846,8 +930,37 @@ input:focus-visible {
     width: 100%;
   }
 
+  /* Six rows of pills before the answer is most of a phone screen. Smaller
+     chips fit three or four per row instead of two. */
+  .chip {
+    font-size: 12.5px;
+    padding: 5px 11px;
+  }
+
+  .picker {
+    gap: 7px;
+    padding: 12px 0 13px;
+  }
+
+  .picker__group {
+    gap: 6px;
+  }
+
+  .picker__label {
+    margin-bottom: -2px;
+  }
+
+  .answer {
+    padding-top: 18px;
+  }
+
+  .answer__grid {
+    margin-top: 16px;
+    gap: 10px;
+  }
+
   .answer__cell {
-    padding: 18px;
+    padding: 16px 17px 17px 19px;
   }
 }
 
@@ -919,8 +1032,27 @@ input:focus-visible {
   color: var(--muted);
 }
 
-.pick__encounter {
+/* An adjustment that moved the answer, in the same gold the encounter rules
+   already use. It is not a gap, so it does not get the ember. */
+.pick__encounter,
+.pick__roll {
   color: #d8a03c;
+  padding-left: 10px;
+  border-left: 2px solid rgba(216, 160, 60, 0.32);
+}
+
+/* The dataset caveat: quietest thing on the card, because it explains rather
+   than warns. This is the line that answers "why is this pick always the
+   same", so it has to be present and it has to not shout. */
+.pick__pool {
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.014);
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .answer__tracking {

@@ -61,8 +61,22 @@ function hasRule(encounter: Encounter, id: string): boolean {
   return findRule(encounter, id) !== null;
 }
 
+/**
+ * Range bands a point-blank weapon simply cannot reach. The brief records a
+ * band on most encounters; reading it is not a new claim, it is using the
+ * research that is already in the file instead of waiting for somebody to
+ * hand-write a sword-unfriendly rule per fight.
+ */
+const OUT_OF_SWORD_RANGE: ReadonlySet<string> = new Set(['far', 'mid-far']);
+
+/** Mid range: a sword reaches, badly. Demoted rather than excluded. */
+const AWKWARD_SWORD_RANGE: ReadonlySet<string> = new Set(['mid']);
+
 function isSwordUnfriendly(encounter: Encounter): boolean {
-  return encounter.range === 'far' || hasRule(encounter, 'sword-unfriendly');
+  return (
+    (encounter.range !== null && OUT_OF_SWORD_RANGE.has(encounter.range)) ||
+    hasRule(encounter, 'sword-unfriendly')
+  );
 }
 
 function isSetpiece(encounter: Encounter): boolean {
@@ -95,15 +109,25 @@ export function buildEncounterAdjust(encounter: Encounter): EncounterAdjust | un
       ? { ruleId: namedSwordRule.id, text: namedSwordRule.text }
       : {
           ruleId: 'far-range',
-          text: 'This is a far-range damage check; point-blank weapons cannot reach it.'
+          text:
+            'The brief records this damage check at ' +
+            String(encounter.range) +
+            ' range; point-blank weapons cannot reach it. (Range is community knowledge unless the brief marks it verified.)'
         }
     : null;
   const proxyRule = findRule(encounter, 'proxy');
   const setpieceRule = findRule(encounter, 'setpiece');
   const sniperDrRule = findRule(encounter, 'sniper-dr');
   const swordBonusRule = findRule(encounter, 'sword-bonus');
+  // A mid-range band demotes point-blank weapons, unless the fight already
+  // has a sword bonus stated (Crota), where the sourced rule wins outright.
+  const awkwardRange =
+    !swordReason &&
+    !swordBonusRule &&
+    encounter.range !== null &&
+    AWKWARD_SWORD_RANGE.has(encounter.range);
 
-  if (!swordReason && !proxyRule && !setpieceRule && !sniperDrRule && !swordBonusRule) {
+  if (!swordReason && !proxyRule && !setpieceRule && !sniperDrRule && !swordBonusRule && !awkwardRange) {
     return undefined;
   }
 
@@ -123,6 +147,13 @@ export function buildEncounterAdjust(encounter: Encounter): EncounterAdjust | un
     }
     if (sniperDrRule && typeNameOf(item) === 'Sniper Rifle') {
       return { ruleId: sniperDrRule.id, text: sniperDrRule.text };
+    }
+    if (awkwardRange && POINT_BLANK_TYPES.has(typeNameOf(item))) {
+      return {
+        ruleId: 'mid-range',
+        text:
+          'The brief records this damage check at mid range. Point-blank weapons still reach it, but not comfortably, so they are demoted here rather than excluded. (Range is community knowledge unless the brief marks it verified.)'
+      };
     }
     return null;
   };
