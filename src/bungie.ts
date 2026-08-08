@@ -210,12 +210,18 @@ export async function platformFetch<T>(
  *   200 characters        class, light, Armor 3.0 stats
  *   201 charInventories   what characters are carrying
  *   205 equipment         what characters are wearing
- *   300 itemInstances     instance-level state
+ *   300 itemInstances     instance-level state, including power
+ *   304 itemStats         per-item stat rolls, which the armoury grid shows
  *   305 itemSockets       rolls and catalysts
  *   800 collectibles      what is unlocked but not held
  *   900 records           requested for completeness of the snapshot
+ *
+ * 304 was added when the armoury grid landed. It is the only component whose
+ * absence is invisible: without it every armour piece renders with no stats
+ * and the page looks merely sparse rather than broken, which is exactly the
+ * failure mode worth a comment.
  */
-export const PROFILE_COMPONENTS = [100, 102, 200, 201, 205, 300, 305, 800, 900] as const;
+export const PROFILE_COMPONENTS = [100, 102, 200, 201, 205, 300, 304, 305, 800, 900] as const;
 
 export interface PlayerRef {
   membershipType: number;

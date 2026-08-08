@@ -124,6 +124,30 @@ export const DEMO_ARSENAL_INSTANCES: Array<{
 
 export const DEMO_CIPHERS = 3;
 
+/**
+ * What each demo Guardian is wearing and carrying.
+ *
+ * These are instance ids only, with no bucket on them. The armoury places
+ * each one into the slot the manifest says it belongs in, which means this
+ * list cannot disagree with the game about whether Apex Predator is a power
+ * weapon. A fixture that hardcodes the slot would only ever prove that the
+ * fixture and the reader were written by the same person.
+ */
+export const DEMO_EQUIPPED: Record<string, string[]> = {
+  'demo-titan': ['demo-apex-1', 'demo-ergo-1', 'demo-synthoceps-1'],
+  'demo-hunter': ['demo-stillhunt-1', 'demo-celestial-1'],
+  'demo-warlock': ['demo-witherhoard-1', 'demo-luna-1']
+};
+
+export const DEMO_CARRIED: Record<string, string[]> = {
+  'demo-titan': ['demo-cataphract-1', 'demo-gjally-1'],
+  'demo-hunter': ['demo-commemoration-1'],
+  'demo-warlock': ['demo-thunderlord-1']
+};
+
+/** Plausible power numbers so the grid has something to sort by. */
+export const DEMO_POWER = 2040;
+
 function stats(values: Partial<Record<keyof typeof STAT_HASHES, number>>): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [name, value] of Object.entries(values)) {
@@ -142,6 +166,37 @@ export function buildDemoProfile(): ProfileResponse {
     vaultItems.push({ itemHash: entry.itemHash, itemInstanceId: entry.instanceId, quantity: 1 });
   }
   vaultItems.push({ itemHash: CIPHER_HASH, quantity: DEMO_CIPHERS });
+
+  // Deal the designated instances out to the characters. They come OUT of the
+  // vault list rather than being duplicated: parseProfile walks the vault,
+  // the character inventories and the equipment alike, so an item counted in
+  // two places would be owned twice and the totals would quietly drift.
+  const placed = new Set<string>();
+  const take = (ids: string[]): ApiItem[] => {
+    const out: ApiItem[] = [];
+    for (const instanceId of ids) {
+      const index = vaultItems.findIndex((item) => item.itemInstanceId === instanceId);
+      if (index === -1) continue;
+      out.push(vaultItems[index]);
+      vaultItems.splice(index, 1);
+      placed.add(instanceId);
+    }
+    return out;
+  };
+  const equipment: Record<string, { items: ApiItem[] }> = {};
+  const inventories: Record<string, { items: ApiItem[] }> = {};
+  for (const [characterId, ids] of Object.entries(DEMO_EQUIPPED)) {
+    equipment[characterId] = { items: take(ids) };
+  }
+  for (const [characterId, ids] of Object.entries(DEMO_CARRIED)) {
+    inventories[characterId] = { items: take(ids) };
+  }
+
+  const instances: Record<string, { primaryStat: { value: number } }> = {};
+  for (const instanceId of placed) instances[instanceId] = { primaryStat: { value: DEMO_POWER } };
+  for (const item of vaultItems) {
+    if (item.itemInstanceId) instances[item.itemInstanceId] = { primaryStat: { value: DEMO_POWER - 5 } };
+  }
 
   const collectibles: Record<string, { state: number }> = {};
   for (const id of COLLECTIONS_ONLY) {
@@ -164,8 +219,8 @@ export function buildDemoProfile(): ProfileResponse {
 
   return {
     profileInventory: { data: { items: vaultItems } },
-    characterInventories: { data: {} },
-    characterEquipment: { data: {} },
+    characterInventories: { data: inventories },
+    characterEquipment: { data: equipment },
     profileCollectibles: { data: { collectibles } },
     characters: {
       data: {
@@ -189,6 +244,6 @@ export function buildDemoProfile(): ProfileResponse {
         }
       }
     },
-    itemComponents: { sockets: { data: sockets } }
+    itemComponents: { sockets: { data: sockets }, instances: { data: instances } }
   };
 }

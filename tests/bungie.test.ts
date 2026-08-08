@@ -199,12 +199,12 @@ describe('getProfile', () => {
       impl
     );
     expect(calls[0].url).toContain('/Destiny2/3/Profile/900/');
-    expect(calls[0].url).toContain('components=100,102,200,201,205,300,305,800,900');
+    expect(calls[0].url).toContain('components=100,102,200,201,205,300,304,305,800,900');
     expect(calls[0].headers['Authorization']).toBe('Bearer token-x');
   });
 
   it('the component list is the documented one', () => {
-    expect([...PROFILE_COMPONENTS]).toEqual([100, 102, 200, 201, 205, 300, 305, 800, 900]);
+    expect([...PROFILE_COMPONENTS]).toEqual([100, 102, 200, 201, 205, 300, 304, 305, 800, 900]);
   });
 });
 

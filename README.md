@@ -134,6 +134,57 @@ The answer also grew depth:
   restores the exact page, so an encounter loadout is a URL you can hand to
   your fireteam.
 
+## The armoury: everything you own, and moving it
+
+The second tab is a full inventory manager. Slots down the side, your three
+Guardians and the vault across the top, every item as a tile with its power,
+its lock and masterwork state, and its perks on click. Double click equips.
+Loadouts save what a character is wearing and put it back on later.
+
+**Why it opens instantly and DIM does not.** DIM downloads Destiny's item
+table on first run and keeps it in IndexedDB. That table is 199 MB of JSON,
+measured on 2026-08-08 against manifest 244213.26.06.29.2000-1-bnet.65583.
+DIM has to work that way because the game used to change every season. This
+one does not, because the game stopped, so the table gets trimmed at build
+time by `scripts/build-armory.mjs` and shipped as a static asset:
+
+    8,237 weapon and armour definitions      997 KB,   307 KB over the wire
+    9,661 socket plugs with descriptions   1,870 KB,   502 KB over the wire
+
+The plug table is the bigger half and the grid never needs it, so it is a
+separate chunk that loads the first time a detail panel opens. A visitor who
+only reads the answer tab downloads neither.
+
+**Every write lives in one file.** `src/write.ts` is the only module in the
+repository that can change your account, and its functions will not compile
+without a `Confirmation`, which can only be minted by `confirmWrite()` with
+the exact sentence a human agreed to. A render pass cannot produce one. The
+test that matters is `tests/armory-panel.test.ts`: drawing the whole grid
+sends zero requests, and removing the arming gate makes two tests fail,
+which was checked by removing it.
+
+**The consent split, stated rather than smuggled.** Live changes are off by
+default and turning them on is a dialog that names what it permits. After
+that, equipping something a character already holds happens with no further
+prompt, because it is reversible in one click and cannot lose an item.
+Anything that MOVES an item, and every loadout, prints the full plan and asks
+again, because a transfer into a full postmaster is the only way this site
+could cost somebody real gear.
+
+**Applying a loadout is a plan, not a loop.** Destiny has no character to
+character transfer, so a cross-Guardian swap is two hops through the vault,
+and an equipped item cannot be moved at all. `src/loadouts.ts` builds the
+whole thing as data first: every departure before any arrival, so a plan
+cannot fill a slot and then fail halfway, and one bulk equip at the end whose
+per-item results are read rather than its envelope. Bungie answers
+`ErrorCode 1` for the envelope while individual items failed inside
+`equipResults`, which is how a tool reports a loadout as applied while half
+of it is still in the vault.
+
+Anything it cannot do, it says, with the fix: an item equipped on your other
+Hunter comes back as "equip Vault Gun on that character first" rather than as
+`DestinyCannotPerformActionOnEquippedItem`.
+
 ## How it reads your account
 
 One authenticated `GetProfile` call with components

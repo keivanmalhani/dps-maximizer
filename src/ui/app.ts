@@ -38,6 +38,8 @@ import type { Activity, GuardianClass, PlayerData } from '../types';
 import { ACTIVITY_LABELS } from '../types';
 import { parseUrlState, serializeUrlState, type RunTarget } from '../url-state';
 import { arsenalTableHtml, resultPage, runbar, type PageModel } from './sections';
+import { ArmoryPanel } from './armory-panel';
+import type { ProfileWithInventory } from '../armory';
 
 export interface AppState {
   source: 'demo' | 'live';
@@ -51,7 +53,16 @@ export interface AppState {
   activity: Activity;
   target: RunTarget;
   arsenalFilters: ArsenalFilters;
+  /** Which half of the site is on screen. The answer is still the front door. */
+  tab: Tab;
 }
+
+export type Tab = 'answer' | 'armoury';
+
+export const TABS: Array<{ id: Tab; label: string; blurb: string }> = [
+  { id: 'answer', label: 'The answer', blurb: 'What to put on, and what to do with it' },
+  { id: 'armoury', label: 'Armoury', blurb: 'Everything you own, and what to move where' }
+];
 
 export function defaultClass(data: PlayerData): GuardianClass {
   return data.characters[0]?.classType ?? 0;
@@ -74,6 +85,7 @@ export class App {
   private state: AppState | null = null;
   private arsenal: ArsenalData | null = null;
   private arsenalLoading = false;
+  private armoury: ArmoryPanel | null = null;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -96,7 +108,8 @@ export class App {
           : defaultClass(data),
       activity: url.target.kind === 'mode' ? url.target.activity : 'boss-burst',
       target: url.target,
-      arsenalFilters: { ...DEFAULT_ARSENAL_FILTERS }
+      arsenalFilters: { ...DEFAULT_ARSENAL_FILTERS },
+      tab: 'answer'
     };
     this.render();
     if (signedIn()) el<HTMLButtonElement>('mine')?.focus();
@@ -137,9 +150,36 @@ export class App {
     return recommendEncounter(state.data, state.classType, hit.activity, hit.encounter);
   }
 
+  private tabsHtml(state: AppState): string {
+    return (
+      `<div class="tabs"><div class="shell shell--wide"><div class="tabs__inner" id="tabs">` +
+      TABS.map(
+        (tab) =>
+          `<button type="button" class="tabs__btn${state.tab === tab.id ? ' tabs__btn--on' : ''}" ` +
+          `data-tab="${tab.id}" aria-pressed="${state.tab === tab.id}">` +
+          `<span class="tabs__label">${escapeText(tab.label)}</span>` +
+          `<span class="tabs__blurb">${escapeText(tab.blurb)}</span></button>`
+      ).join('') +
+      `</div></div></div>`
+    );
+  }
+
   private render(): void {
     const state = this.state;
     if (!state) return;
+
+    if (state.tab === 'armoury') {
+      this.root.innerHTML =
+        this.masthead() +
+        runbar(this.pageModel(state), this.account()) +
+        this.tabsHtml(state) +
+        `<div class="shell shell--wide"><div id="armoury-host"></div></div>`;
+      this.bind();
+      this.syncUrl();
+      void this.openArmoury();
+      return;
+    }
+
     const model = this.pageModel(state);
 
     let html: string;
@@ -162,7 +202,7 @@ export class App {
       html = resultPage(model, verdict, this.account(), { alternatives });
     }
 
-    this.root.innerHTML = this.masthead() + html;
+    this.root.innerHTML = this.masthead() + this.tabsHtml(state) + html;
     this.bind();
     this.syncUrl();
     if (autoArsenal) void this.ensureArsenal();
@@ -217,6 +257,16 @@ export class App {
     });
     el<HTMLButtonElement>('demo')?.addEventListener('click', () => {
       this.start();
+    });
+
+    el<HTMLElement>('tabs')?.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest('[data-tab]');
+      const state = this.state;
+      if (!button || !state) return;
+      const next = button.getAttribute('data-tab') as Tab;
+      if (next === state.tab) return;
+      state.tab = next;
+      this.render();
     });
 
     const picker = el<HTMLElement>('picker');
@@ -387,6 +437,59 @@ export class App {
     }
   }
 
+  // ------------------------------------------------------------ the armoury
+
+  /**
+   * The armoury is a separate panel with its own state, and it is the only
+   * part of the site that can write. It is constructed lazily so that a
+   * visitor who never opens the tab never even loads the module that knows
+   * how to POST.
+   */
+  private async openArmoury(): Promise<void> {
+    const state = this.state;
+    const host = el<HTMLElement>('armoury-host');
+    if (!state || !host) return;
+    if (!this.armoury) {
+      this.armoury = new ArmoryPanel({
+        root: host,
+        account: null,
+        refresh: () => this.refreshProfile(),
+        storage: (() => {
+          try {
+            return window.localStorage;
+          } catch {
+            return null;
+          }
+        })(),
+        now: () => new Date().toISOString().slice(0, 10)
+      });
+    }
+    this.armoury.setHostRoot(host);
+    this.armoury.setAccount(this.accountRef());
+    await this.armoury.open(state.profile as ProfileWithInventory);
+  }
+
+  /** The account writes are addressed to, or null when signed out or on demo. */
+  private accountRef(): { membershipType: number; membershipId: string } | null {
+    const state = this.state;
+    if (!state || state.source !== 'live') return null;
+    return this.liveAccount;
+  }
+
+  private liveAccount: { membershipType: number; membershipId: string } | null = null;
+
+  /** Re-read the profile after a write so the grid shows what Bungie believes. */
+  private async refreshProfile(): Promise<ProfileWithInventory> {
+    const player = await getOwnPlayer();
+    const token = getSession()?.accessToken ?? '';
+    const profile = await getProfile(player, token);
+    if (this.state) {
+      this.state.profile = profile;
+      this.state.data = parseProfile(profile);
+    }
+    return profile as ProfileWithInventory;
+  }
+
   // ------------------------------------------------------ status in place
 
   private setStatus(html: string): void {
@@ -441,6 +544,7 @@ export class App {
 
     try {
       const player = await getOwnPlayer();
+      this.liveAccount = { membershipType: player.membershipType, membershipId: player.membershipId };
       this.setProgress('Reading your vault, Collections and catalysts. One request, a few seconds.');
       // Read the session again rather than reusing one from before the call:
       // getOwnPlayer is where a quietly dead hour gets noticed.
@@ -459,7 +563,8 @@ export class App {
           : defaultClass(data),
         activity: previous?.activity ?? 'boss-burst',
         target: previous?.target ?? { kind: 'mode', activity: 'boss-burst' },
-        arsenalFilters: previous?.arsenalFilters ?? { ...DEFAULT_ARSENAL_FILTERS }
+        arsenalFilters: previous?.arsenalFilters ?? { ...DEFAULT_ARSENAL_FILTERS },
+        tab: previous?.tab ?? 'answer'
       };
       this.render();
       window.scrollTo({ top: 0, behavior: 'auto' });

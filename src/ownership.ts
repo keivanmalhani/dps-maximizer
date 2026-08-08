@@ -61,6 +61,10 @@ export interface ProfileResponse {
     sockets?: {
       data?: Record<string, { sockets?: Array<{ plugHash?: number; isEnabled?: boolean }> }>;
     };
+    /** Component 300. Power lives here, and only the armoury reads it. */
+    instances?: { data?: Record<string, { primaryStat?: { value?: number } }> };
+    /** Component 304. Per item stat rolls, likewise armoury only. */
+    stats?: { data?: Record<string, { stats?: Record<string, { value?: number }> }> };
   };
 }
 
