@@ -89,7 +89,7 @@ export function eachItem(response: ProfileResponse, fn: (item: ApiItem) => void)
 export function parseProfile(response: ProfileResponse): PlayerData {
   const owned: Record<string, OwnershipEntry> = {};
   for (const id of Object.keys(BAKED_ITEMS)) {
-    owned[id] = { state: 'none', instanceIds: [], quantity: 0 };
+    owned[id] = { state: 'none', instanceIds: [], quantity: 0, power: null };
   }
 
   let ciphers: number | null = response.profileInventory?.data?.items ? 0 : null;
@@ -105,7 +105,15 @@ export function parseProfile(response: ProfileResponse): PlayerData {
     const entry = owned[id];
     entry.state = 'instances';
     entry.quantity += item.quantity ?? 1;
-    if (item.itemInstanceId) entry.instanceIds.push(item.itemInstanceId);
+    if (item.itemInstanceId) {
+      entry.instanceIds.push(item.itemInstanceId);
+      // Component 300, the same field armory.ts reads. The recommendation
+      // engine gets an honest Power number instead of only a tier label.
+      const power = response.itemComponents?.instances?.data?.[item.itemInstanceId]?.primaryStat?.value;
+      if (typeof power === 'number') {
+        entry.power = entry.power === null ? power : Math.max(entry.power, power);
+      }
+    }
   });
 
   // Collections only upgrades 'none' to 'collections'; it never downgrades a

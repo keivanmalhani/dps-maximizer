@@ -8,6 +8,7 @@ export interface OwnSpec {
   state?: Owned;
   instanceIds?: string[];
   plugs?: Record<string, number[]>;
+  power?: number | null;
 }
 
 /** A PlayerData with the named items owned and everything else absent. */
@@ -21,7 +22,7 @@ export function player(
 ): PlayerData {
   const owned: PlayerData['owned'] = {};
   for (const id of Object.keys(BAKED_ITEMS)) {
-    owned[id] = { state: 'none', instanceIds: [], quantity: 0 };
+    owned[id] = { state: 'none', instanceIds: [], quantity: 0, power: null };
   }
   const socketsByInstance: Record<string, number[]> = {};
   for (const raw of specs) {
@@ -30,7 +31,7 @@ export function player(
     const state = spec.state ?? 'instances';
     const instanceIds =
       spec.instanceIds ?? (state === 'instances' ? [spec.id + '-instance-1'] : []);
-    owned[spec.id] = { state, instanceIds, quantity: instanceIds.length || 1 };
+    owned[spec.id] = { state, instanceIds, quantity: instanceIds.length || 1, power: spec.power ?? null };
     for (const [instanceId, plugs] of Object.entries(spec.plugs ?? {})) {
       socketsByInstance[instanceId] = plugs;
     }

@@ -49,6 +49,8 @@ export interface Pick {
   owned: Owned;
   buildableNow: boolean;
   ownershipLine: string;
+  /** The best owned instance's Power. Null when nothing is owned to read it from. */
+  power: number | null;
   roll: RollState;
   rollLine: string | null;
   catalyst: CatalystState | null;
@@ -222,6 +224,7 @@ function toPick(item: CuratedItem, player: PlayerData, withChampion: boolean): P
     typeLabel: baked?.itemTypeDisplayName ?? (item.kind === 'armor' ? 'Exotic armor' : ''),
     slotName: baked ? slotLabel(baked.slot) : '',
     owned: state,
+    power: player.owned[item.id]?.power ?? null,
     buildableNow: buildableNow(item, player),
     ownershipLine: ownershipLine(item, state),
     roll,

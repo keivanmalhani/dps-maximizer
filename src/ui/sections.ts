@@ -171,7 +171,9 @@ export function pickerSection(model: PageModel): string {
 
   return (
     `<section class="picker" id="picker">` +
-    `<div class="picker__group"><span class="picker__label">Class</span>${classButtons}</div>` +
+    `<div class="picker__group"><span class="picker__label">Class</span>${classButtons}${
+      model.character ? `<span class="picker__light">Power <b>${model.character.light}</b></span>` : ''
+    }</div>` +
     `<div class="picker__group"><span class="picker__label">Doing what</span>${activityButtons}${activitySelect(target)}</div>` +
     encounterStrip(target) +
     `</section>`
@@ -210,8 +212,10 @@ function lightggLink(pick: Pick): string {
 
 function pickCard(pick: Pick, slotTitle: string): string {
   const ownedClass = pick.buildableNow ? ' pick--owned' : ' pick--missing';
+  const powerBadge =
+    pick.power !== null ? `<span class="pick__power">${escapeText(String(pick.power))}</span>` : '';
   const icon = pick.icon
-    ? `<img class="pick__icon" src="${escapeText(iconUrl(pick.icon))}" alt="" width="48" height="48" loading="lazy" />`
+    ? `<div class="pick__icon-wrap"><img class="pick__icon" src="${escapeText(iconUrl(pick.icon))}" alt="" width="48" height="48" loading="lazy" />${powerBadge}</div>`
     : '';
   const lines: string[] = [];
   lines.push(`<p class="pick__own">${escapeText(pick.ownershipLine)}</p>`);

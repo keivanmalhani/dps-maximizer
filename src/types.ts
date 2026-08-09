@@ -64,6 +64,8 @@ export interface OwnershipEntry {
   state: Owned;
   instanceIds: string[];
   quantity: number;
+  /** Highest Power seen across owned instances, null with nothing to read it from. */
+  power: number | null;
 }
 
 /** One character, as much of it as the site needs. */
