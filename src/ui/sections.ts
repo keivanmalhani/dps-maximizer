@@ -210,12 +210,31 @@ function lightggLink(pick: Pick): string {
   );
 }
 
+const RARITY_CLASS: Record<number, string> = { 5: 'rarity--legendary', 6: 'rarity--exotic' };
+
+const ELEMENT_NAME: Record<number, string> = {
+  1: 'Kinetic',
+  2: 'Arc',
+  3: 'Solar',
+  4: 'Void',
+  6: 'Stasis',
+  7: 'Strand'
+};
+
+function elementBadge(id: string): string {
+  const damageType = BAKED_ITEMS[id]?.damageType;
+  const name = damageType ? ELEMENT_NAME[damageType] : undefined;
+  if (!name) return '';
+  return `<span class="pick__element pick__element--${name.toLowerCase()}" title="${name}">${name.slice(0, 1)}</span>`;
+}
+
 function pickCard(pick: Pick, slotTitle: string): string {
   const ownedClass = pick.buildableNow ? ' pick--owned' : ' pick--missing';
   const powerBadge =
     pick.power !== null ? `<span class="pick__power">${escapeText(String(pick.power))}</span>` : '';
+  const rarityClass = RARITY_CLASS[BAKED_ITEMS[pick.id]?.tierType ?? -1] ?? '';
   const icon = pick.icon
-    ? `<div class="pick__icon-wrap"><img class="pick__icon" src="${escapeText(iconUrl(pick.icon))}" alt="" width="48" height="48" loading="lazy" />${powerBadge}</div>`
+    ? `<div class="pick__icon-wrap"><img class="pick__icon ${rarityClass}" src="${escapeText(iconUrl(pick.icon))}" alt="" width="48" height="48" loading="lazy" />${powerBadge}${elementBadge(pick.id)}</div>`
     : '';
   const lines: string[] = [];
   lines.push(`<p class="pick__own">${escapeText(pick.ownershipLine)}</p>`);
@@ -263,6 +282,33 @@ function emptySlotCard(slot: SlotAnswer): string {
  * does not publish a loadout URL format, so inventing one would ship a broken
  * button. Quoted terms joined by `or` is documented syntax and it works.
  */
+function quickTile(pick: Pick, slotTitle: string): string {
+  if (!pick.icon) return '';
+  const rarityClass = RARITY_CLASS[BAKED_ITEMS[pick.id]?.tierType ?? -1] ?? '';
+  const powerBadge =
+    pick.power !== null ? `<span class="qtile__power">${escapeText(String(pick.power))}</span>` : '';
+  const label = slotTitle + ': ' + pick.name + (pick.power !== null ? ', power ' + pick.power : '');
+  return (
+    `<div class="qtile ${rarityClass}${pick.buildableNow ? '' : ' qtile--missing'}" title="${escapeText(label)}" aria-label="${escapeText(label)}">` +
+    `<img class="qtile__img" src="${escapeText(iconUrl(pick.icon))}" alt="" width="48" height="48" loading="lazy" />` +
+    powerBadge +
+    elementBadge(pick.id) +
+    `</div>`
+  );
+}
+
+/** The glance row: every pick as a bare tile, no names, before the prose
+    cards that explain them. What DIM gives you in half a second. */
+function answerQuickView(verdict: Verdict): string {
+  const tiles = verdict.slots
+    .map((slot) => (slot.pick ? quickTile(slot.pick, slot.pick.slotName) : ''))
+    .join('');
+  const armorTile = verdict.armor ? quickTile(verdict.armor, 'Exotic armor') : '';
+  const all = tiles + armorTile;
+  if (!all) return '';
+  return `<div class="qview">${all}</div>`;
+}
+
 function dimHandoff(verdict: Verdict): string {
   const names = verdict.slots
     .map((slot) => slot.pick?.name ?? '')
@@ -407,6 +453,7 @@ export function answerSection(verdict: Verdict, encounter?: EncounterVerdict): s
     `<section class="section answer" id="answer">` +
     `<div class="eyebrow">The answer</div>` +
     `<h1 class="answer__headline">${escapeText(verdict.headline)}</h1>` +
+    answerQuickView(verdict) +
     // The cards come before the paragraph about the cards. This page exists
     // to answer a question; the caveats read better underneath the answer.
     `<div class="answer__grid">${slotCards}${armor}${superCard}</div>` +

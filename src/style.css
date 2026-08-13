@@ -480,6 +480,35 @@ input:focus-visible {
   background: var(--quiet);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+.pick__icon.rarity--exotic {
+  border-color: #c8a750;
+}
+.pick__icon.rarity--legendary {
+  border-color: #6b4b8a;
+}
+/* A single-letter element chip, top-left, the corner the tile power badge
+   does not use. Color carries the element; the letter is there for anyone
+   colorblind or on a bad screen. */
+.pick__element {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  color: #0a0b0e;
+  background: var(--faint);
+}
+.pick__element--arc { background: #85c5ec; }
+.pick__element--solar { background: #f2721c; color: #170703; }
+.pick__element--void { background: #b184c5; }
+.pick__element--stasis { background: #4d88ff; }
+.pick__element--strand { background: #2e9c7a; }
+.pick__element--kinetic { background: #cbd0d9; }
 /* The Power number, in the same corner and the same dark chip DIM and the
    armoury tiles both use. One convention for "what level is this," not a
    different one per screen. */
@@ -1744,6 +1773,44 @@ input:focus-visible {
 .cell__more--flat {
   color: var(--faint);
   cursor: default;
+}
+
+.qview {
+  margin-top: 18px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.qtile {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: visible;
+}
+.qtile__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  border: 2px solid var(--line-hi);
+  object-fit: cover;
+}
+.qtile.rarity--exotic .qtile__img { border-color: #c8a750; }
+.qtile.rarity--legendary .qtile__img { border-color: #6b4b8a; }
+.qtile--missing .qtile__img { opacity: 0.45; border-style: dashed; }
+.qtile__power {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  background: rgba(10, 11, 14, 0.88);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  padding: 0 4px;
 }
 
 /* ------------------------------------------------------------------ tile */
