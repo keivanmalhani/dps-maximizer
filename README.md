@@ -3,6 +3,8 @@
 [![CI](https://github.com/keivanmalhani/dps-maximizer/actions/workflows/ci.yml/badge.svg)](https://github.com/keivanmalhani/dps-maximizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+English | [Espanol](README.es.md)
+
 Live: https://keivanmalhani.github.io/dps-maximizer/
 
 Sign in with Bungie, pick your class and what you are doing - a generic mode
